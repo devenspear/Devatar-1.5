@@ -4,7 +4,7 @@ import { generateSpeech } from "@/lib/ai/elevenlabs";
 import { generateFluxImage } from "@/lib/ai/piapi-flux";
 import { submitVideoGeneration, checkVideoStatus } from "@/lib/ai/kling";
 import { submitLipsync, checkLipsyncStatus } from "@/lib/ai/synclabs";
-import { uploadToR2, generateSceneKey } from "@/lib/storage/r2";
+import { uploadToR2, generateSceneKey, getSignedDownloadUrl } from "@/lib/storage/r2";
 
 // POST /api/scenes/[id]/generate-direct - Direct generation (bypasses Inngest for testing)
 export async function POST(
@@ -105,8 +105,11 @@ export async function POST(
 
         const videoPrompt = `${scene.movement || "subtle head movements"}, ${scene.camera || "medium close-up shot"}, professional video`;
 
+        // Get a signed URL for the image so Kling can access it (expires in 1 hour)
+        const signedImageUrl = await getSignedDownloadUrl(imageKey, 3600);
+
         const videoSubmission = await submitVideoGeneration({
-          imageUrl: imageUpload.url,
+          imageUrl: signedImageUrl,
           prompt: videoPrompt,
           duration: 5,
         });
