@@ -112,7 +112,26 @@ export async function POST(
         let imageKey: string;
         let imageUrl: string;
 
-        if (scene.headshot && scene.headshot.r2Key) {
+        // Check for headshot: scene-specific OR default headshot from settings
+        let headshotToUse = scene.headshot;
+
+        if (!headshotToUse) {
+          // Try to get default headshot from settings
+          const defaultSetting = await prisma.systemSetting.findUnique({
+            where: { key: "default_headshot_id" },
+          });
+
+          if (defaultSetting?.value) {
+            headshotToUse = await prisma.asset.findUnique({
+              where: { id: defaultSetting.value },
+            });
+            if (headshotToUse) {
+              await createLog(id, projectId, "IMAGE_GENERATION", "INFO", `Using default headshot: ${headshotToUse.name}`, "System");
+            }
+          }
+        }
+
+        if (headshotToUse && headshotToUse.r2Key) {
           // USE DEVEN'S UPLOADED HEADSHOT - Skip AI generation!
           send({ step: 2, status: "using_headshot", message: "Using Deven's uploaded headshot..." });
 
@@ -121,10 +140,10 @@ export async function POST(
             data: { status: "GENERATING_IMAGE" },
           });
 
-          imageKey = scene.headshot.r2Key;
-          imageUrl = scene.headshot.r2Url || "";
+          imageKey = headshotToUse.r2Key;
+          imageUrl = headshotToUse.r2Url || "";
 
-          await createLog(id, projectId, "IMAGE_GENERATION", "INFO", `Using uploaded headshot: ${scene.headshot.name}`, "Uploaded");
+          await createLog(id, projectId, "IMAGE_GENERATION", "INFO", `Using uploaded headshot: ${headshotToUse.name}`, "Uploaded");
 
           await prisma.scene.update({
             where: { id },
