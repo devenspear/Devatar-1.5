@@ -27,8 +27,10 @@ export async function GET(
     }
   }
 
+  // Convert BigInt to Number for JSON serialization
   return NextResponse.json({
     ...asset,
+    sizeBytes: Number(asset.sizeBytes),
     signedUrl,
   });
 }
@@ -59,7 +61,11 @@ export async function PATCH(
     },
   });
 
-  return NextResponse.json(updatedAsset);
+  // Convert BigInt to Number for JSON serialization
+  return NextResponse.json({
+    ...updatedAsset,
+    sizeBytes: Number(updatedAsset.sizeBytes),
+  });
 }
 
 // DELETE /api/assets/[id] - Delete an asset

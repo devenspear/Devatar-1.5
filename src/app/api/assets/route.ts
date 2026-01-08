@@ -20,7 +20,13 @@ export async function GET(request: Request) {
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json(assets);
+  // Convert BigInt to Number for JSON serialization
+  const serializedAssets = assets.map((asset) => ({
+    ...asset,
+    sizeBytes: Number(asset.sizeBytes),
+  }));
+
+  return NextResponse.json(serializedAssets);
 }
 
 // POST /api/assets - Upload a new asset
@@ -124,7 +130,11 @@ export async function POST(request: Request) {
         },
       });
 
-      return NextResponse.json(updatedAsset);
+      // Convert BigInt to Number for JSON serialization
+      return NextResponse.json({
+        ...updatedAsset,
+        sizeBytes: Number(updatedAsset.sizeBytes),
+      });
     } catch (uploadError) {
       // If upload fails, mark asset as failed
       await prisma.asset.update({
