@@ -7,18 +7,18 @@ const GITHUB_URL = packageJson.repository?.url?.replace(".git", "") || "https://
 
 export function VersionFooter() {
   return (
-    <footer className="fixed bottom-0 left-0 right-0 border-t border-border bg-background/80 backdrop-blur-sm">
-      <div className="container mx-auto px-4 py-2 flex items-center justify-between text-sm text-muted-foreground">
+    <footer className="border-t border-gray-800 bg-gray-900/50 backdrop-blur-sm flex-shrink-0">
+      <div className="px-6 py-3 flex items-center justify-between text-sm text-gray-500">
         <div className="flex items-center gap-4">
           <a
             href={GITHUB_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-foreground transition-colors"
+            className="hover:text-gray-300 transition-colors"
           >
             Devatar v{APP_VERSION}
           </a>
-          <span className="text-border">|</span>
+          <span className="text-gray-700">|</span>
           <span>AI Avatar Video Generation</span>
         </div>
         <div className="flex items-center gap-2">
