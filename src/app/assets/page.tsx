@@ -72,11 +72,27 @@ export default function AssetsPage() {
   const [activeType, setActiveType] = useState<AssetType>("HEADSHOT");
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [defaultHeadshotId, setDefaultHeadshotId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchAssets();
+    if (activeType === "HEADSHOT") {
+      fetchDefaultHeadshot();
+    }
   }, [activeType]);
+
+  async function fetchDefaultHeadshot() {
+    try {
+      const res = await fetch("/api/settings?key=default_headshot_id");
+      if (res.ok) {
+        const data = await res.json();
+        setDefaultHeadshotId(data.value || null);
+      }
+    } catch (error) {
+      console.error("Error fetching default headshot:", error);
+    }
+  }
 
   async function fetchAssets() {
     setLoading(true);
@@ -161,7 +177,7 @@ export default function AssetsPage() {
           value: assetId,
         }),
       });
-      alert("Set as default headshot!");
+      setDefaultHeadshotId(assetId);
     } catch (error) {
       console.error("Error setting default:", error);
     }
@@ -298,6 +314,7 @@ export default function AssetsPage() {
               <AssetCard
                 key={asset.id}
                 asset={asset}
+                isDefault={asset.id === defaultHeadshotId}
                 onDelete={() => deleteAsset(asset.id)}
                 onSetDefault={
                   asset.type === "HEADSHOT"
@@ -352,10 +369,12 @@ export default function AssetsPage() {
 
 function AssetCard({
   asset,
+  isDefault,
   onDelete,
   onSetDefault,
 }: {
   asset: Asset;
+  isDefault?: boolean;
   onDelete: () => void;
   onSetDefault?: () => void;
 }) {
@@ -384,7 +403,7 @@ function AssetCard({
   const isVideo = asset.type === "TRAINING_VIDEO";
 
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden group">
+    <div className={`bg-gray-800 rounded-lg overflow-hidden group ${isDefault ? "ring-2 ring-green-500" : "border border-gray-700"}`}>
       {/* Preview */}
       <div className="aspect-square bg-gray-900 flex items-center justify-center relative">
         {isImage && imageUrl ? (
@@ -397,6 +416,14 @@ function AssetCard({
           <Video className="w-12 h-12 text-gray-600" />
         ) : (
           <Mic className="w-12 h-12 text-gray-600" />
+        )}
+
+        {/* Default Badge */}
+        {isDefault && (
+          <div className="absolute top-2 left-2 px-2 py-1 bg-green-600 rounded text-xs text-white flex items-center gap-1 font-medium">
+            <CheckCircle className="w-3 h-3" />
+            Default
+          </div>
         )}
 
         {/* Status Badge */}
@@ -419,7 +446,7 @@ function AssetCard({
 
         {/* Hover Actions */}
         <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-          {onSetDefault && (
+          {onSetDefault && !isDefault && (
             <button
               onClick={onSetDefault}
               className="p-2 bg-blue-600 rounded-full hover:bg-blue-500 transition-colors"
