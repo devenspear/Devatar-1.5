@@ -158,9 +158,13 @@ export async function POST(
           data: { status: "APPLYING_LIPSYNC" },
         });
 
+        // Get signed URLs for video and audio so Sync Labs can access them
+        const signedVideoUrl = await getSignedDownloadUrl(videoKey, 3600);
+        const signedAudioUrl = await getSignedDownloadUrl(audioKey, 3600);
+
         const lipsyncSubmission = await submitLipsync({
-          videoUrl: videoUpload.url,
-          audioUrl: audioUpload.url,
+          videoUrl: signedVideoUrl,
+          audioUrl: signedAudioUrl,
         });
 
         send({ step: 4, status: "submitted", jobId: lipsyncSubmission.jobId, message: "Lip-sync submitted, polling for completion..." });

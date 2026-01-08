@@ -8,7 +8,7 @@ const SYNCLABS_API_URL = "https://api.sync.so/v2";
 export interface LipsyncRequest {
   videoUrl: string;
   audioUrl: string;
-  model?: "lipsync-1.9.0" | "lipsync-1.8.0";
+  model?: "lipsync-2" | "lipsync-2-pro";
   synergize?: boolean;
   maxCredits?: number;
 }
@@ -29,7 +29,7 @@ export async function submitLipsync(
   const {
     videoUrl,
     audioUrl,
-    model = "lipsync-1.9.0",
+    model = "lipsync-2",
     synergize = true,
     maxCredits,
   } = request;
