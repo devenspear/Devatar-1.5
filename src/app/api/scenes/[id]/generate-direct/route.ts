@@ -62,6 +62,7 @@ export async function POST(
           data: {
             audioUrl: audioUpload.url,
             audioDuration: estimatedDuration,
+            audioModel: "eleven_multilingual_v2",
           },
         });
 
@@ -90,6 +91,7 @@ export async function POST(
           data: {
             imageUrl: imageUpload.url,
             imagePrompt,
+            imageModel: "Qubico/flux1-schnell",
           },
         });
 
@@ -145,6 +147,8 @@ export async function POST(
           data: {
             rawVideoUrl: videoUpload.url,
             videoPrompt,
+            videoModel: "kling",
+            videoMode: "pro",
           },
         });
 
@@ -198,6 +202,7 @@ export async function POST(
           where: { id },
           data: {
             lipsyncVideoUrl: finalUpload.url,
+            lipsyncModel: "lipsync-2",
             finalVideoUrl: finalUpload.url,
             status: "COMPLETED",
           },

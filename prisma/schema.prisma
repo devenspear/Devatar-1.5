@@ -121,15 +121,20 @@ model Scene {
   audioUrl        String?
   audioDuration   Int?
   voiceId         String?
+  audioModel      String?      // e.g., "eleven_multilingual_v2"
 
   imageUrl        String?
   imagePrompt     String?      @db.Text
+  imageModel      String?      // e.g., "Qubico/flux1-schnell"
 
   rawVideoUrl     String?
   videoPrompt     String?      @db.Text
   videoDuration   Int?
+  videoModel      String?      // e.g., "kling"
+  videoMode       String?      // e.g., "pro" or "std"
 
   lipsyncVideoUrl String?
+  lipsyncModel    String?      // e.g., "lipsync-2"
   finalVideoUrl   String?
   thumbnailUrl    String?
 
