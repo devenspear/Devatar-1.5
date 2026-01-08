@@ -1,9 +1,10 @@
 /**
  * PiAPI Flux Image Generation Client
- * Alternative to Gemini for image generation
+ * Using PiAPI's unified task endpoint
+ * Docs: https://piapi.ai/docs/flux-api/text-to-image
  */
 
-const PIAPI_BASE_URL = "https://api.piapi.ai/api/flux";
+const PIAPI_BASE_URL = "https://api.piapi.ai/api/v1/task";
 
 export interface FluxImageOptions {
   aspectRatio?: "1:1" | "16:9" | "9:16" | "4:3" | "3:4";
@@ -16,13 +17,13 @@ export interface FluxImageResult {
 }
 
 /**
- * Generate an image using PiAPI Flux
+ * Generate an image using PiAPI Flux Schnell (fast model)
  */
 export async function generateFluxImage(
   prompt: string,
   options: FluxImageOptions = {}
 ): Promise<FluxImageResult> {
-  const { aspectRatio = "16:9", negativePrompt } = options;
+  const { aspectRatio = "16:9" } = options;
 
   // Map aspect ratio to width/height
   const dimensions: Record<string, { width: number; height: number }> = {
@@ -35,24 +36,22 @@ export async function generateFluxImage(
 
   const { width, height } = dimensions[aspectRatio] || dimensions["16:9"];
 
-  let fullPrompt = prompt;
-  if (negativePrompt) {
-    fullPrompt += ` --no ${negativePrompt}`;
-  }
-
   // Submit generation task
-  const response = await fetch(`${PIAPI_BASE_URL}/v1/schnell`, {
+  const response = await fetch(PIAPI_BASE_URL, {
     method: "POST",
     headers: {
-      "x-api-key": process.env.PIAPI_FLUX_KEY!,
+      "X-API-Key": process.env.PIAPI_FLUX_KEY!,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      prompt: fullPrompt,
-      width,
-      height,
-      num_inference_steps: 4,
-      guidance_scale: 3.5,
+      model: "Qubico/flux1-schnell",
+      task_type: "txt2img",
+      input: {
+        prompt: prompt,
+        width: width,
+        height: height,
+        num_inference_steps: 4,
+      },
     }),
   });
 
@@ -62,30 +61,21 @@ export async function generateFluxImage(
   }
 
   const data = await response.json();
+  const taskId = data.data?.task_id;
 
-  // Check if it's a sync response or needs polling
-  if (data.data?.images?.[0]?.url) {
-    return {
-      imageUrl: data.data.images[0].url,
-      taskId: data.data.task_id || "sync",
-    };
-  }
-
-  // If async, poll for result
-  const taskId = data.data?.task_id || data.task_id;
   if (!taskId) {
     throw new Error("No task ID in response: " + JSON.stringify(data));
   }
 
   // Poll for completion
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 60; i++) {
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
     const statusResponse = await fetch(
-      `${PIAPI_BASE_URL}/v1/task/${taskId}`,
+      `https://api.piapi.ai/api/v1/task/${taskId}`,
       {
         headers: {
-          "x-api-key": process.env.PIAPI_FLUX_KEY!,
+          "X-API-Key": process.env.PIAPI_FLUX_KEY!,
         },
       }
     );
@@ -95,20 +85,28 @@ export async function generateFluxImage(
     }
 
     const statusData = await statusResponse.json();
+    const status = statusData.data?.status;
 
-    if (statusData.data?.status === "completed" && statusData.data?.images?.[0]?.url) {
-      return {
-        imageUrl: statusData.data.images[0].url,
-        taskId,
-      };
+    if (status === "completed") {
+      const imageUrl = statusData.data?.output?.image_url ||
+                       statusData.data?.output?.images?.[0]?.url ||
+                       statusData.data?.output?.images?.[0];
+
+      if (imageUrl) {
+        return {
+          imageUrl,
+          taskId,
+        };
+      }
+      throw new Error("No image URL in completed response: " + JSON.stringify(statusData));
     }
 
-    if (statusData.data?.status === "failed") {
-      throw new Error(`Image generation failed: ${statusData.data.error || "Unknown error"}`);
+    if (status === "failed") {
+      throw new Error(`Image generation failed: ${statusData.data?.error || JSON.stringify(statusData)}`);
     }
   }
 
-  throw new Error("Image generation timed out");
+  throw new Error("Image generation timed out after 2 minutes");
 }
 
 /**
@@ -116,13 +114,7 @@ export async function generateFluxImage(
  */
 export async function testFluxConnection(): Promise<boolean> {
   try {
-    // Just check if API key is valid by making a simple request
-    const response = await fetch(`${PIAPI_BASE_URL}/v1/models`, {
-      headers: {
-        "x-api-key": process.env.PIAPI_FLUX_KEY!,
-      },
-    });
-    return response.ok || response.status === 404; // 404 is ok, just means endpoint doesn't exist but key works
+    return !!process.env.PIAPI_FLUX_KEY;
   } catch {
     return false;
   }
