@@ -7,6 +7,37 @@ import { submitLipsync, checkLipsyncStatus } from "@/lib/ai/synclabs";
 import { uploadToR2, generateSceneKey, getSignedDownloadUrl } from "@/lib/storage/r2";
 import { DEVEN_VOICE_ID, DEVEN_VOICE_SETTINGS } from "@/lib/avatar-identity";
 
+// Helper function to create generation logs
+async function createLog(
+  sceneId: string,
+  projectId: string,
+  step: "AUDIO_GENERATION" | "IMAGE_GENERATION" | "VIDEO_GENERATION" | "LIPSYNC_APPLICATION" | "SOUND_FX_MIXING" | "VIDEO_ASSEMBLY",
+  level: "DEBUG" | "INFO" | "WARN" | "ERROR",
+  message: string,
+  provider?: string,
+  extra?: { durationMs?: number; errorCode?: string; errorDetails?: object; requestPayload?: object; responsePayload?: object }
+) {
+  try {
+    await prisma.generationLog.create({
+      data: {
+        sceneId,
+        projectId,
+        step,
+        level,
+        message,
+        provider,
+        durationMs: extra?.durationMs,
+        errorCode: extra?.errorCode,
+        errorDetails: extra?.errorDetails,
+        requestPayload: extra?.requestPayload,
+        responsePayload: extra?.responsePayload,
+      },
+    });
+  } catch (e) {
+    console.error("Failed to create log:", e);
+  }
+}
+
 // POST /api/scenes/[id]/generate-direct - Direct generation (bypasses Inngest for testing)
 export async function POST(
   request: Request,
@@ -41,6 +72,7 @@ export async function POST(
 
         // STEP 1: Generate Audio using Deven's voice
         send({ step: 1, status: "generating_audio", message: "Generating speech with Deven's voice..." });
+        const audioStartTime = Date.now();
 
         await prisma.scene.update({
           where: { id },
@@ -49,6 +81,8 @@ export async function POST(
 
         // Use Deven's professional voice clone
         const voiceId = scene.voiceId || DEVEN_VOICE_ID;
+
+        await createLog(id, projectId, "AUDIO_GENERATION", "INFO", `Starting audio generation with voice ${voiceId}`, "ElevenLabs");
 
         const audioResult = await generateSpeech(
           scene.dialogue || "Hello, this is a test.",
@@ -71,6 +105,7 @@ export async function POST(
           },
         });
 
+        await createLog(id, projectId, "AUDIO_GENERATION", "INFO", `Audio generated: ${audioResult.characterCount} chars`, "ElevenLabs", { durationMs: Date.now() - audioStartTime });
         send({ step: 1, status: "completed", audioUrl: audioUpload.url });
 
         // STEP 2: Use Deven's Headshot or Generate Image
@@ -89,6 +124,8 @@ export async function POST(
           imageKey = scene.headshot.r2Key;
           imageUrl = scene.headshot.r2Url || "";
 
+          await createLog(id, projectId, "IMAGE_GENERATION", "INFO", `Using uploaded headshot: ${scene.headshot.name}`, "Uploaded");
+
           await prisma.scene.update({
             where: { id },
             data: {
@@ -102,6 +139,7 @@ export async function POST(
         } else {
           // Fallback: Generate AI image (should rarely be used)
           send({ step: 2, status: "generating_image", message: "Generating avatar image (no headshot selected)..." });
+          const imageStartTime = Date.now();
 
           await prisma.scene.update({
             where: { id },
@@ -109,6 +147,8 @@ export async function POST(
           });
 
           const imagePrompt = `Professional cinematic portrait of a confident business person in ${scene.environment || "modern office"}, wearing ${scene.wardrobe || "business attire"}, ${scene.moodLighting || "cinematic"} lighting, high quality, photorealistic, ultra detailed, 8k`;
+
+          await createLog(id, projectId, "IMAGE_GENERATION", "INFO", `Starting Flux image generation`, "PiAPI-Flux");
 
           const imageResult = await generateFluxImage(imagePrompt, { aspectRatio: "16:9" });
 
@@ -128,11 +168,13 @@ export async function POST(
             },
           });
 
+          await createLog(id, projectId, "IMAGE_GENERATION", "INFO", `Image generated via Flux`, "PiAPI-Flux", { durationMs: Date.now() - imageStartTime });
           send({ step: 2, status: "completed", imageUrl: imageUrl });
         }
 
         // STEP 3: Generate Video (Kling AI)
         send({ step: 3, status: "generating_video", message: "Generating video from image (this takes 5-15 min)..." });
+        const videoStartTime = Date.now();
 
         await prisma.scene.update({
           where: { id },
@@ -140,6 +182,8 @@ export async function POST(
         });
 
         const videoPrompt = `${scene.movement || "subtle head movements"}, ${scene.camera || "medium close-up shot"}, professional video`;
+
+        await createLog(id, projectId, "VIDEO_GENERATION", "INFO", `Starting Kling video generation`, "Kling");
 
         // Get a signed URL for the image so Kling can access it (expires in 1 hour)
         const signedImageUrl = await getSignedDownloadUrl(imageKey, 3600);
@@ -150,6 +194,7 @@ export async function POST(
           duration: 5,
         });
 
+        await createLog(id, projectId, "VIDEO_GENERATION", "INFO", `Video task submitted: ${videoSubmission.taskId}`, "Kling");
         send({ step: 3, status: "submitted", taskId: videoSubmission.taskId, message: "Video generation submitted, polling for completion..." });
 
         // Poll for video completion (max 20 minutes)
@@ -169,6 +214,7 @@ export async function POST(
         }
 
         if (!videoUrl) {
+          await createLog(id, projectId, "VIDEO_GENERATION", "ERROR", `Video generation timed out after 20 minutes`, "Kling");
           throw new Error("Video generation timed out");
         }
 
@@ -186,15 +232,19 @@ export async function POST(
           },
         });
 
+        await createLog(id, projectId, "VIDEO_GENERATION", "INFO", `Video completed successfully`, "Kling", { durationMs: Date.now() - videoStartTime });
         send({ step: 3, status: "completed", videoUrl: videoUpload.url });
 
         // STEP 4: Apply Lip-sync
         send({ step: 4, status: "applying_lipsync", message: "Applying lip-sync (this takes 2-5 min)..." });
+        const lipsyncStartTime = Date.now();
 
         await prisma.scene.update({
           where: { id },
           data: { status: "APPLYING_LIPSYNC" },
         });
+
+        await createLog(id, projectId, "LIPSYNC_APPLICATION", "INFO", `Starting Sync Labs lip-sync`, "SyncLabs");
 
         // Get signed URLs for video and audio so Sync Labs can access them
         const signedVideoUrl = await getSignedDownloadUrl(videoKey, 3600);
@@ -205,6 +255,7 @@ export async function POST(
           audioUrl: signedAudioUrl,
         });
 
+        await createLog(id, projectId, "LIPSYNC_APPLICATION", "INFO", `Lip-sync job submitted: ${lipsyncSubmission.jobId}`, "SyncLabs");
         send({ step: 4, status: "submitted", jobId: lipsyncSubmission.jobId, message: "Lip-sync submitted, polling for completion..." });
 
         // Poll for lip-sync completion (max 10 minutes)
@@ -224,8 +275,11 @@ export async function POST(
         }
 
         if (!lipsyncVideoUrl) {
+          await createLog(id, projectId, "LIPSYNC_APPLICATION", "ERROR", `Lip-sync timed out after 10 minutes`, "SyncLabs");
           throw new Error("Lip-sync timed out");
         }
+
+        await createLog(id, projectId, "LIPSYNC_APPLICATION", "INFO", `Lip-sync completed`, "SyncLabs", { durationMs: Date.now() - lipsyncStartTime });
 
         const finalKey = generateSceneKey(projectId, id, "final");
         const finalBuffer = await fetch(lipsyncVideoUrl).then((r) => r.arrayBuffer());
@@ -242,21 +296,33 @@ export async function POST(
           },
         });
 
+        await createLog(id, projectId, "VIDEO_ASSEMBLY", "INFO", `Scene generation completed successfully`, "Devatar");
         send({ step: 5, status: "completed", finalVideoUrl: finalUpload.url, message: "Scene generation complete!" });
         controller.close();
 
       } catch (error) {
         const { id } = await params;
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+
+        // Log the error
+        try {
+          const scene = await prisma.scene.findUnique({ where: { id }, select: { projectId: true } });
+          if (scene) {
+            await createLog(id, scene.projectId, "VIDEO_ASSEMBLY", "ERROR", errorMessage, undefined, { errorCode: "GENERATION_FAILED" });
+          }
+        } catch (e) {
+          console.error("Failed to log error:", e);
+        }
 
         await prisma.scene.update({
           where: { id },
           data: {
             status: "FAILED",
-            failureReason: error instanceof Error ? error.message : "Unknown error",
+            failureReason: errorMessage,
           },
         });
 
-        send({ error: error instanceof Error ? error.message : "Unknown error" });
+        send({ error: errorMessage });
         controller.close();
       }
     },
