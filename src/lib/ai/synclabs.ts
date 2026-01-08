@@ -9,7 +9,6 @@ export interface LipsyncRequest {
   videoUrl: string;
   audioUrl: string;
   model?: "lipsync-2" | "lipsync-2-pro";
-  synergize?: boolean;
   maxCredits?: number;
 }
 
@@ -30,7 +29,6 @@ export async function submitLipsync(
     videoUrl,
     audioUrl,
     model = "lipsync-2",
-    synergize = true,
     maxCredits,
   } = request;
 
@@ -48,7 +46,6 @@ export async function submitLipsync(
       ],
       options: {
         output_format: "mp4",
-        synergize,
         ...(maxCredits && { max_credits: maxCredits }),
       },
     }),
