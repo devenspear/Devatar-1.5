@@ -16,7 +16,8 @@ export interface GenerateImageResult {
 }
 
 /**
- * Generate an image using Google's Imagen 3 API
+ * Generate an image using Gemini 2.0 Flash Experimental
+ * This model can generate images through the generateContent API with image output
  */
 export async function generateImage(
   prompt: string,
@@ -25,30 +26,28 @@ export async function generateImage(
   const { negativePrompt, aspectRatio = "16:9" } = options;
 
   // Build the full prompt
-  let fullPrompt = prompt;
+  let fullPrompt = `Create a photorealistic image: ${prompt}`;
   if (negativePrompt) {
-    fullPrompt += ` Avoid: ${negativePrompt}`;
+    fullPrompt += ` Do not include: ${negativePrompt}`;
   }
+  fullPrompt += ` Aspect ratio should be ${aspectRatio}. Ultra-realistic, cinematic quality.`;
 
-  // Use Imagen 3 for image generation
+  // Use Gemini 2.0 Flash Exp with image generation
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${process.env.GOOGLE_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${process.env.GOOGLE_API_KEY}`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        instances: [
+        contents: [
           {
-            prompt: fullPrompt,
+            parts: [{ text: fullPrompt }],
           },
         ],
-        parameters: {
-          sampleCount: 1,
-          aspectRatio: aspectRatio,
-          personGeneration: "allow_adult",
-          safetyFilterLevel: "block_only_high",
+        generationConfig: {
+          responseModalities: ["TEXT", "IMAGE"],
         },
       }),
     }
@@ -56,21 +55,23 @@ export async function generateImage(
 
   if (!response.ok) {
     const error = await response.text();
-    throw new Error(`Imagen API error: ${response.status} - ${error}`);
+    throw new Error(`Gemini Image API error: ${response.status} - ${error}`);
   }
 
   const data = await response.json();
 
   // Extract image from response
-  const predictions = data.predictions || [];
-  if (!predictions[0]?.bytesBase64Encoded) {
-    throw new Error("No image generated in response");
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  const imagePart = parts.find((p: { inlineData?: { data: string; mimeType: string } }) => p.inlineData);
+
+  if (!imagePart?.inlineData?.data) {
+    throw new Error("No image generated in response. Response: " + JSON.stringify(data));
   }
 
   return {
-    imageBase64: predictions[0].bytesBase64Encoded,
-    mimeType: "image/png",
-    revisedPrompt: undefined,
+    imageBase64: imagePart.inlineData.data,
+    mimeType: imagePart.inlineData.mimeType || "image/png",
+    revisedPrompt: parts.find((p: { text?: string }) => p.text)?.text,
   };
 }
 
