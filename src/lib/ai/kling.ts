@@ -51,21 +51,26 @@ export async function submitVideoGeneration(
     mode = "pro",
   } = request;
 
+  const requestBody = {
+    model: "kling",
+    task_type: "video_generation",
+    input: {
+      image_url: imageUrl,
+      prompt: prompt,
+      negative_prompt: negativePrompt,
+      cfg_scale: 0.5,
+      duration: duration,
+      aspect_ratio: aspectRatio,
+      mode: mode,
+    },
+  };
+
+  console.log("Kling request:", JSON.stringify(requestBody, null, 2));
+
   const response = await fetch(PIAPI_BASE_URL, {
     method: "POST",
     headers: getAuthHeaders(),
-    body: JSON.stringify({
-      model: "kling",
-      task_type: "video_generation",
-      input: {
-        image_url: imageUrl,
-        prompt: prompt,
-        negative_prompt: negativePrompt,
-        duration: duration,
-        aspect_ratio: aspectRatio,
-        mode: mode,
-      },
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {
@@ -131,12 +136,16 @@ export async function checkVideoStatus(taskId: string): Promise<VideoTask> {
                    task.output?.video ||
                    task.result?.video_url;
 
+  // Stringify error if it's an object
+  const rawError = task.error || task.message || task.error_message;
+  const error = typeof rawError === 'object' ? JSON.stringify(rawError) : rawError;
+
   return {
     taskId,
     status,
     videoUrl,
     duration: task.output?.duration,
-    error: task.error || task.message,
+    error,
     progress: task.progress,
   };
 }
