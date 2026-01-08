@@ -1,0 +1,214 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// ASSET MANAGEMENT
+// Training videos, headshots, voice configurations
+// ============================================================================
+
+enum AssetType {
+  TRAINING_VIDEO
+  HEADSHOT
+  VOICE_SAMPLE
+  BACKGROUND
+  SOUND_EFFECT
+}
+
+enum AssetStatus {
+  UPLOADING
+  PROCESSING
+  READY
+  FAILED
+}
+
+model Asset {
+  id              String       @id @default(cuid())
+  name            String
+  type            AssetType
+  status          AssetStatus  @default(UPLOADING)
+
+  r2Key           String
+  r2Url           String?
+  mimeType        String
+  sizeBytes       Int
+
+  duration        Int?         // Duration in seconds (for video/audio)
+  width           Int?
+  height          Int?
+
+  elevenLabsVoiceId String?    // For voice assets
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  scenes          Scene[]      @relation("SceneHeadshot")
+
+  @@index([type])
+  @@index([status])
+}
+
+// ============================================================================
+// PROJECT & SCENE MANAGEMENT
+// ============================================================================
+
+enum ProjectStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+model Project {
+  id              String         @id @default(cuid())
+  name            String
+  description     String?
+  status          ProjectStatus  @default(DRAFT)
+
+  finalVideoUrl   String?
+  thumbnailUrl    String?
+  totalDuration   Int?
+
+  defaultVoiceId  String?
+
+  scenes          Scene[]
+  logs            GenerationLog[]
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([status])
+}
+
+enum SceneStatus {
+  DRAFT
+  GENERATING_AUDIO
+  GENERATING_IMAGE
+  GENERATING_VIDEO
+  APPLYING_LIPSYNC
+  ADDING_SOUND_FX
+  COMPLETED
+  FAILED
+}
+
+model Scene {
+  id              String       @id @default(cuid())
+  projectId       String
+  project         Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  name            String
+  orderIndex      Int
+
+  // Scene prompts
+  environment     String?      @db.Text
+  wardrobe        String?      @db.Text
+  movement        String?      @db.Text
+  camera          String?      @db.Text
+  dialogue        String?      @db.Text
+  soundEffects    String?      @db.Text
+
+  targetDuration  Int          @default(15)
+  moodLighting    String       @default("cinematic")
+
+  status          SceneStatus  @default(DRAFT)
+
+  // Generated outputs
+  audioUrl        String?
+  audioDuration   Int?
+  voiceId         String?
+
+  imageUrl        String?
+  imagePrompt     String?      @db.Text
+
+  rawVideoUrl     String?
+  videoPrompt     String?      @db.Text
+  videoDuration   Int?
+
+  lipsyncVideoUrl String?
+  finalVideoUrl   String?
+  thumbnailUrl    String?
+
+  // Headshot override
+  headshotId      String?
+  headshot        Asset?       @relation("SceneHeadshot", fields: [headshotId], references: [id])
+
+  // Error tracking
+  failureReason   String?      @db.Text
+  retryCount      Int          @default(0)
+  lastAttemptAt   DateTime?
+
+  logs            GenerationLog[]
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([projectId, orderIndex])
+  @@index([status])
+}
+
+// ============================================================================
+// LOGGING
+// ============================================================================
+
+enum LogLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+}
+
+enum GenerationStep {
+  AUDIO_GENERATION
+  IMAGE_GENERATION
+  VIDEO_GENERATION
+  LIPSYNC_APPLICATION
+  SOUND_FX_MIXING
+  VIDEO_ASSEMBLY
+}
+
+model GenerationLog {
+  id              String         @id @default(cuid())
+
+  projectId       String?
+  project         Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sceneId         String?
+  scene           Scene?         @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+
+  level           LogLevel       @default(INFO)
+  step            GenerationStep
+  message         String         @db.Text
+
+  provider        String?
+  requestPayload  Json?
+  responsePayload Json?
+
+  durationMs      Int?
+  costEstimateUSD Float?
+
+  errorCode       String?
+  errorDetails    Json?
+
+  createdAt       DateTime       @default(now())
+
+  @@index([projectId])
+  @@index([sceneId])
+  @@index([step])
+  @@index([level])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// SYSTEM SETTINGS
+// ============================================================================
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+}
