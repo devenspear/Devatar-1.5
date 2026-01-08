@@ -13,6 +13,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   MousePointer2,
+  User,
 } from "lucide-react";
 import { useSidebar, SidebarMode } from "@/contexts/sidebar-context";
 import {
@@ -32,6 +33,7 @@ const navigation: NavItem[] = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Projects", href: "/projects", icon: FolderOpen },
   { name: "New Project", href: "/projects/new", icon: Video },
+  { name: "Assets", href: "/assets", icon: User },
   { name: "Logs", href: "/logs", icon: Activity },
   { name: "Settings", href: "/settings", icon: Settings },
 ];

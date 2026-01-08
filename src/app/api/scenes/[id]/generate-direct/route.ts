@@ -5,6 +5,7 @@ import { generateFluxImage } from "@/lib/ai/piapi-flux";
 import { submitVideoGeneration, checkVideoStatus } from "@/lib/ai/kling";
 import { submitLipsync, checkLipsyncStatus } from "@/lib/ai/synclabs";
 import { uploadToR2, generateSceneKey, getSignedDownloadUrl } from "@/lib/storage/r2";
+import { DEVEN_VOICE_ID, DEVEN_VOICE_SETTINGS } from "@/lib/avatar-identity";
 
 // POST /api/scenes/[id]/generate-direct - Direct generation (bypasses Inngest for testing)
 export async function POST(
@@ -21,10 +22,13 @@ export async function POST(
       try {
         const { id } = await params;
 
-        // Get scene
+        // Get scene with headshot
         const scene = await prisma.scene.findUnique({
           where: { id },
-          include: { project: true },
+          include: {
+            project: true,
+            headshot: true,
+          },
         });
 
         if (!scene) {
@@ -35,20 +39,21 @@ export async function POST(
 
         const projectId = scene.projectId;
 
-        // STEP 1: Generate Audio
-        send({ step: 1, status: "generating_audio", message: "Generating speech audio..." });
+        // STEP 1: Generate Audio using Deven's voice
+        send({ step: 1, status: "generating_audio", message: "Generating speech with Deven's voice..." });
 
         await prisma.scene.update({
           where: { id },
           data: { status: "GENERATING_AUDIO" },
         });
 
-        // Default voice ID: "Rachel" - ElevenLabs default voice
-        const DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM";
+        // Use Deven's professional voice clone
+        const voiceId = scene.voiceId || DEVEN_VOICE_ID;
 
         const audioResult = await generateSpeech(
           scene.dialogue || "Hello, this is a test.",
-          scene.voiceId || DEFAULT_VOICE_ID
+          voiceId,
+          DEVEN_VOICE_SETTINGS
         );
 
         const audioKey = generateSceneKey(projectId, id, "audio");
@@ -68,34 +73,63 @@ export async function POST(
 
         send({ step: 1, status: "completed", audioUrl: audioUpload.url });
 
-        // STEP 2: Generate Image
-        send({ step: 2, status: "generating_image", message: "Generating avatar image..." });
+        // STEP 2: Use Deven's Headshot or Generate Image
+        let imageKey: string;
+        let imageUrl: string;
 
-        await prisma.scene.update({
-          where: { id },
-          data: { status: "GENERATING_IMAGE" },
-        });
+        if (scene.headshot && scene.headshot.r2Key) {
+          // USE DEVEN'S UPLOADED HEADSHOT - Skip AI generation!
+          send({ step: 2, status: "using_headshot", message: "Using Deven's uploaded headshot..." });
 
-        const imagePrompt = `Professional cinematic portrait of a confident business person in ${scene.environment || "modern office"}, wearing ${scene.wardrobe || "business attire"}, ${scene.moodLighting || "cinematic"} lighting, high quality, photorealistic, ultra detailed, 8k`;
+          await prisma.scene.update({
+            where: { id },
+            data: { status: "GENERATING_IMAGE" },
+          });
 
-        const imageResult = await generateFluxImage(imagePrompt, { aspectRatio: "16:9" });
+          imageKey = scene.headshot.r2Key;
+          imageUrl = scene.headshot.r2Url || "";
 
-        // Download image from URL and upload to R2
-        const imageResponse = await fetch(imageResult.imageUrl);
-        const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
-        const imageKey = generateSceneKey(projectId, id, "image");
-        const imageUpload = await uploadToR2(imageBuffer, imageKey, "image/png");
+          await prisma.scene.update({
+            where: { id },
+            data: {
+              imageUrl: imageUrl,
+              imagePrompt: "Deven's uploaded headshot",
+              imageModel: "uploaded",
+            },
+          });
 
-        await prisma.scene.update({
-          where: { id },
-          data: {
-            imageUrl: imageUpload.url,
-            imagePrompt,
-            imageModel: "Qubico/flux1-schnell",
-          },
-        });
+          send({ step: 2, status: "completed", imageUrl: imageUrl, message: "Using Deven's headshot" });
+        } else {
+          // Fallback: Generate AI image (should rarely be used)
+          send({ step: 2, status: "generating_image", message: "Generating avatar image (no headshot selected)..." });
 
-        send({ step: 2, status: "completed", imageUrl: imageUpload.url });
+          await prisma.scene.update({
+            where: { id },
+            data: { status: "GENERATING_IMAGE" },
+          });
+
+          const imagePrompt = `Professional cinematic portrait of a confident business person in ${scene.environment || "modern office"}, wearing ${scene.wardrobe || "business attire"}, ${scene.moodLighting || "cinematic"} lighting, high quality, photorealistic, ultra detailed, 8k`;
+
+          const imageResult = await generateFluxImage(imagePrompt, { aspectRatio: "16:9" });
+
+          // Download image from URL and upload to R2
+          const imageResponse = await fetch(imageResult.imageUrl);
+          const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+          imageKey = generateSceneKey(projectId, id, "image");
+          const imageUpload = await uploadToR2(imageBuffer, imageKey, "image/png");
+          imageUrl = imageUpload.url;
+
+          await prisma.scene.update({
+            where: { id },
+            data: {
+              imageUrl: imageUrl,
+              imagePrompt,
+              imageModel: "Qubico/flux1-schnell",
+            },
+          });
+
+          send({ step: 2, status: "completed", imageUrl: imageUrl });
+        }
 
         // STEP 3: Generate Video (Kling AI)
         send({ step: 3, status: "generating_video", message: "Generating video from image (this takes 5-15 min)..." });

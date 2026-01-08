@@ -17,6 +17,7 @@ export async function POST(request: Request) {
       targetDuration,
       moodLighting,
       voiceId,
+      headshotId,
     } = body;
 
     if (!projectId || !name) {
@@ -48,6 +49,7 @@ export async function POST(request: Request) {
         targetDuration: targetDuration || 15,
         moodLighting: moodLighting || "cinematic",
         voiceId,
+        headshotId: headshotId || null,
       },
     });
 

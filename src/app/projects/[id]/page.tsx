@@ -14,7 +14,16 @@ import {
   Image as ImageIcon,
   Film,
   Zap,
+  User,
 } from "lucide-react";
+
+interface Asset {
+  id: string;
+  name: string;
+  type: string;
+  r2Url: string | null;
+  signedUrl?: string;
+}
 
 interface Scene {
   id: string;
@@ -26,6 +35,7 @@ interface Scene {
   finalVideoUrl: string | null;
   thumbnailUrl: string | null;
   failureReason: string | null;
+  headshotId: string | null;
   createdAt: string;
 }
 
@@ -105,6 +115,7 @@ export default function ProjectPage({
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
+  const [headshots, setHeadshots] = useState<Asset[]>([]);
   const [sceneForm, setSceneForm] = useState({
     name: "",
     dialogue: "",
@@ -113,6 +124,7 @@ export default function ProjectPage({
     movement: "",
     camera: "",
     targetDuration: 15,
+    headshotId: "",
   });
   const [creating, setCreating] = useState(false);
   const [generating, setGenerating] = useState<string | null>(null);
@@ -121,6 +133,7 @@ export default function ProjectPage({
 
   useEffect(() => {
     fetchProject();
+    fetchHeadshots();
     // Poll for updates while generating
     const interval = setInterval(fetchProject, 5000);
     return () => clearInterval(interval);
@@ -137,6 +150,33 @@ export default function ProjectPage({
       console.error("Error fetching project:", error);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchHeadshots() {
+    try {
+      const res = await fetch("/api/assets?type=HEADSHOT");
+      if (res.ok) {
+        const data = await res.json();
+        // Fetch signed URLs for each headshot
+        const headshotsWithUrls = await Promise.all(
+          data.map(async (asset: Asset) => {
+            try {
+              const detailRes = await fetch(`/api/assets/${asset.id}`);
+              if (detailRes.ok) {
+                const detail = await detailRes.json();
+                return { ...asset, signedUrl: detail.signedUrl };
+              }
+            } catch {
+              // Ignore errors
+            }
+            return asset;
+          })
+        );
+        setHeadshots(headshotsWithUrls);
+      }
+    } catch (error) {
+      console.error("Error fetching headshots:", error);
     }
   }
 
@@ -163,6 +203,7 @@ export default function ProjectPage({
           movement: "",
           camera: "",
           targetDuration: 15,
+          headshotId: "",
         });
         setShowCreate(false);
         fetchProject();
@@ -448,6 +489,72 @@ export default function ProjectPage({
             <h2 className="text-lg font-semibold text-gray-100 mb-4">Create New Scene</h2>
 
             <div className="space-y-4">
+              {/* Deven's Identity Card */}
+              <div className="bg-gradient-to-r from-blue-600/10 to-purple-600/10 border border-blue-500/20 rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-500/20 rounded-full">
+                    <User className="w-5 h-5 text-blue-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-200">Avatar: Deven Spear</p>
+                    <p className="text-xs text-gray-500">Voice: DevenPro2026</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Headshot Selector */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Select Headshot *
+                </label>
+                {headshots.length === 0 ? (
+                  <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg text-center">
+                    <User className="w-8 h-8 mx-auto mb-2 text-gray-600" />
+                    <p className="text-sm text-gray-500">No headshots uploaded yet</p>
+                    <a
+                      href="/assets"
+                      className="text-sm text-blue-400 hover:text-blue-300 mt-2 inline-block"
+                    >
+                      Upload headshots in Assets
+                    </a>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-4 gap-3">
+                    {headshots.map((headshot) => (
+                      <button
+                        key={headshot.id}
+                        type="button"
+                        onClick={() =>
+                          setSceneForm({ ...sceneForm, headshotId: headshot.id })
+                        }
+                        className={`aspect-square rounded-lg overflow-hidden border-2 transition-all ${
+                          sceneForm.headshotId === headshot.id
+                            ? "border-blue-500 ring-2 ring-blue-500/50"
+                            : "border-gray-700 hover:border-gray-600"
+                        }`}
+                      >
+                        {headshot.signedUrl ? (
+                          <img
+                            src={headshot.signedUrl}
+                            alt={headshot.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gray-800 flex items-center justify-center">
+                            <User className="w-6 h-6 text-gray-600" />
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {sceneForm.headshotId && (
+                  <p className="text-xs text-green-400 mt-2">
+                    Headshot selected - will skip AI image generation
+                  </p>
+                )}
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">
                   Scene Name *
