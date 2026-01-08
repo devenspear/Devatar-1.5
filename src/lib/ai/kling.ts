@@ -1,9 +1,10 @@
 /**
  * Kling AI Video Generation Client
- * Uses PiAPI for access to Kling AI
+ * Uses PiAPI's unified task endpoint
+ * Docs: https://piapi.ai/docs/kling-api
  */
 
-const PIAPI_BASE_URL = "https://api.piapi.ai/api/kling/v1";
+const PIAPI_BASE_URL = "https://api.piapi.ai/api/v1/task";
 
 export interface VideoGenerationRequest {
   imageUrl: string;
@@ -11,8 +12,7 @@ export interface VideoGenerationRequest {
   negativePrompt?: string;
   duration: 5 | 10;
   aspectRatio?: "16:9" | "9:16" | "1:1";
-  mode?: "standard" | "pro";
-  cfgScale?: number;
+  mode?: "std" | "pro";
 }
 
 export interface VideoTask {
@@ -28,14 +28,16 @@ export interface VideoTask {
  * Get authorization headers for PiAPI
  */
 function getAuthHeaders(): HeadersInit {
+  // Use the same PiAPI key for all services
+  const apiKey = process.env.PIAPI_FLUX_KEY || process.env.KLING_ACCESS_KEY;
   return {
-    "X-API-Key": process.env.KLING_ACCESS_KEY!,
+    "X-API-Key": apiKey!,
     "Content-Type": "application/json",
   };
 }
 
 /**
- * Submit a video generation job to Kling AI
+ * Submit a video generation job to Kling AI via PiAPI
  */
 export async function submitVideoGeneration(
   request: VideoGenerationRequest
@@ -47,21 +49,22 @@ export async function submitVideoGeneration(
     duration,
     aspectRatio = "16:9",
     mode = "pro",
-    cfgScale = 0.5,
   } = request;
 
-  const response = await fetch(`${PIAPI_BASE_URL}/image2video`, {
+  const response = await fetch(PIAPI_BASE_URL, {
     method: "POST",
     headers: getAuthHeaders(),
     body: JSON.stringify({
-      model: "kling-v1-5",
-      image: imageUrl,
-      prompt,
-      negative_prompt: negativePrompt,
-      duration: duration.toString(),
-      aspect_ratio: aspectRatio,
-      mode,
-      cfg_scale: cfgScale,
+      model: "kling",
+      task_type: "video_generation",
+      input: {
+        image_url: imageUrl,
+        prompt: prompt,
+        negative_prompt: negativePrompt,
+        duration: duration,
+        aspect_ratio: aspectRatio,
+        mode: mode,
+      },
     }),
   });
 
@@ -72,8 +75,8 @@ export async function submitVideoGeneration(
 
   const data = await response.json();
 
-  if (data.code !== 200) {
-    throw new Error(`Kling API error: ${data.message}`);
+  if (data.code !== 200 && !data.data?.task_id) {
+    throw new Error(`Kling API error: ${data.message || JSON.stringify(data)}`);
   }
 
   return { taskId: data.data.task_id };
@@ -83,7 +86,7 @@ export async function submitVideoGeneration(
  * Check the status of a video generation task
  */
 export async function checkVideoStatus(taskId: string): Promise<VideoTask> {
-  const response = await fetch(`${PIAPI_BASE_URL}/task/${taskId}`, {
+  const response = await fetch(`${PIAPI_BASE_URL}/${taskId}`, {
     headers: getAuthHeaders(),
   });
 
@@ -94,44 +97,52 @@ export async function checkVideoStatus(taskId: string): Promise<VideoTask> {
 
   const data = await response.json();
 
-  if (data.code !== 200) {
-    throw new Error(`Kling API error: ${data.message}`);
+  if (data.code !== 200 && !data.data) {
+    throw new Error(`Kling API error: ${data.message || JSON.stringify(data)}`);
   }
 
   const task = data.data;
   let status: VideoTask["status"] = "pending";
 
-  switch (task.task_status) {
-    case "submitted":
+  switch (task.status) {
     case "pending":
+    case "submitted":
+    case "queued":
       status = "pending";
       break;
     case "processing":
+    case "running":
       status = "processing";
       break;
+    case "completed":
     case "succeed":
+    case "success":
       status = "completed";
       break;
     case "failed":
+    case "error":
       status = "failed";
       break;
   }
 
+  // Try to find video URL from different possible response structures
+  const videoUrl = task.output?.video_url ||
+                   task.output?.videos?.[0]?.url ||
+                   task.output?.video ||
+                   task.result?.video_url;
+
   return {
     taskId,
     status,
-    videoUrl: task.task_result?.videos?.[0]?.url,
-    duration: task.task_result?.videos?.[0]?.duration,
-    error: task.task_status_msg,
+    videoUrl,
+    duration: task.output?.duration,
+    error: task.error || task.message,
     progress: task.progress,
   };
 }
 
 /**
  * Poll for video completion with timeout
- * @param taskId - The task ID to poll
- * @param maxAttempts - Maximum number of polling attempts (default 60 = 30 minutes at 30s intervals)
- * @param intervalMs - Polling interval in milliseconds (default 30000 = 30 seconds)
  */
 export async function waitForVideoCompletion(
   taskId: string,
@@ -145,7 +156,6 @@ export async function waitForVideoCompletion(
       return task;
     }
 
-    // Wait before next poll
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
 
@@ -157,12 +167,7 @@ export async function waitForVideoCompletion(
  */
 export async function testConnection(): Promise<boolean> {
   try {
-    // Try to get a task that doesn't exist - if we get a proper error response, the API is working
-    const response = await fetch(`${PIAPI_BASE_URL}/task/test-connection`, {
-      headers: getAuthHeaders(),
-    });
-    // Even a 404 means the API is reachable
-    return response.status !== 401 && response.status !== 403;
+    return !!(process.env.PIAPI_FLUX_KEY || process.env.KLING_ACCESS_KEY);
   } catch {
     return false;
   }
