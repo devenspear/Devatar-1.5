@@ -36,7 +36,7 @@ model Asset {
   r2Key           String
   r2Url           String?
   mimeType        String
-  sizeBytes       Int
+  sizeBytes       BigInt        // BigInt to support files >2GB
 
   duration        Int?         // Duration in seconds (for video/audio)
   width           Int?
