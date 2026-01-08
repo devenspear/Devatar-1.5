@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { generateSpeech } from "@/lib/ai/elevenlabs";
-import { generateImage } from "@/lib/ai/gemini";
+import { generateFluxImage } from "@/lib/ai/piapi-flux";
 import { submitVideoGeneration, checkVideoStatus } from "@/lib/ai/kling";
 import { submitLipsync, checkLipsyncStatus } from "@/lib/ai/synclabs";
 import { uploadToR2, generateSceneKey } from "@/lib/storage/r2";
@@ -75,14 +75,15 @@ export async function POST(
           data: { status: "GENERATING_IMAGE" },
         });
 
-        const imagePrompt = `Professional headshot portrait of a person in ${scene.environment || "modern office"}, wearing ${scene.wardrobe || "business attire"}, ${scene.moodLighting || "cinematic"} lighting, high quality, photorealistic`;
+        const imagePrompt = `Professional cinematic portrait of a confident business person in ${scene.environment || "modern office"}, wearing ${scene.wardrobe || "business attire"}, ${scene.moodLighting || "cinematic"} lighting, high quality, photorealistic, ultra detailed, 8k`;
 
-        const imageResult = await generateImage(imagePrompt);
+        const imageResult = await generateFluxImage(imagePrompt, { aspectRatio: "16:9" });
 
+        // Download image from URL and upload to R2
+        const imageResponse = await fetch(imageResult.imageUrl);
+        const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
         const imageKey = generateSceneKey(projectId, id, "image");
-        // Convert base64 to buffer
-        const imageBuffer = Buffer.from(imageResult.imageBase64, "base64");
-        const imageUpload = await uploadToR2(imageBuffer, imageKey, imageResult.mimeType);
+        const imageUpload = await uploadToR2(imageBuffer, imageKey, "image/png");
 
         await prisma.scene.update({
           where: { id },
