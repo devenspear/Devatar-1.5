@@ -374,31 +374,47 @@ export const generateScene = inngest.createFunction(
       return taskId;
     });
 
-    // Poll for video completion (up to 20 minutes with Inngest step.sleep)
+    // Poll for video completion (up to 15 minutes with optimized intervals)
+    // Kling typically completes in 3-5 minutes
     let videoUrl: string | undefined;
     let rawVideoKey: string | undefined;
+    let videoPollCount = 0;
+    const VIDEO_MAX_POLLS = 45; // 45 polls * 20s = 15 minutes max
 
-    for (let i = 0; i < 40; i++) {
-      // Use Inngest's step.sleep which doesn't block the function timeout
-      await step.sleep(`wait-video-${i}`, "30s");
+    for (let i = 0; i < VIDEO_MAX_POLLS; i++) {
+      videoPollCount = i;
+      // Poll every 20 seconds for faster detection
+      await step.sleep(`wait-video-${i}`, "20s");
 
       const status = await step.run(`check-video-${i}`, async () => {
         const result = await checkVideoStatus(videoTaskId);
 
-        await createLog(
-          sceneId,
-          projectId,
-          "VIDEO_GENERATION",
-          "DEBUG",
-          `Video status: ${result.status} (${result.progress || 0}%)`,
-          "Kling"
-        );
+        // Log progress every 3rd poll to reduce noise, or always on completion
+        const shouldLog = i % 3 === 0 || result.status === "completed" || result.status === "failed";
+        if (shouldLog) {
+          await createLog(
+            sceneId,
+            projectId,
+            "VIDEO_GENERATION",
+            result.status === "completed" ? "INFO" : "DEBUG",
+            `Video poll #${i + 1}: ${result.status} (${result.progress || 0}%)`,
+            "Kling"
+          );
+        }
 
         return result;
       });
 
       if (status.status === "completed" && status.videoUrl) {
         videoUrl = status.videoUrl;
+        await createLog(
+          sceneId,
+          projectId,
+          "VIDEO_GENERATION",
+          "INFO",
+          `Video completed successfully after ${i + 1} polls (~${Math.round((i + 1) * 20 / 60)} min)`,
+          "Kling"
+        );
         break;
       }
 
@@ -421,10 +437,10 @@ export const generateScene = inngest.createFunction(
         projectId,
         "VIDEO_GENERATION",
         "ERROR",
-        "Video generation timed out after 20 minutes",
+        `Video generation timed out after ${videoPollCount + 1} polls (~${Math.round((videoPollCount + 1) * 20 / 60)} min). Task ID: ${videoTaskId}`,
         "Kling"
       );
-      throw new Error("Video generation timed out");
+      throw new Error(`Video generation timed out. Task ID: ${videoTaskId}`);
     }
 
     // Upload video to R2
@@ -499,22 +515,30 @@ export const generateScene = inngest.createFunction(
       return jobId;
     });
 
-    // Poll for lip-sync completion (up to 10 minutes with Inngest step.sleep)
+    // Poll for lip-sync completion with auto-recovery
+    // Uses shorter intervals initially (10s) then longer (15s) for efficiency
     let lipsyncVideoUrl: string | undefined;
+    let completedWithoutUrl = false;
+    let pollCount = 0;
+    const MAX_POLLS = 60; // 60 polls * 10-15s = ~10-15 minutes max
 
-    for (let i = 0; i < 40; i++) {
-      // Use Inngest's step.sleep which doesn't block the function timeout
-      await step.sleep(`wait-lipsync-${i}`, "15s");
+    for (let i = 0; i < MAX_POLLS; i++) {
+      pollCount = i;
+      // Shorter intervals for first 2 minutes, then standard 15s
+      const sleepDuration = i < 12 ? "10s" : "15s";
+      await step.sleep(`wait-lipsync-${i}`, sleepDuration);
 
       const status = await step.run(`check-lipsync-${i}`, async () => {
         const result = await checkLipsyncStatus(lipsyncJobId);
 
+        // Log with more detail
+        const hasUrl = result.videoUrl ? "URL found" : "no URL";
         await createLog(
           sceneId,
           projectId,
           "LIPSYNC_APPLICATION",
-          "DEBUG",
-          `Lip-sync status: ${result.status}`,
+          result.status === "completed" ? "INFO" : "DEBUG",
+          `Lip-sync poll #${i + 1}: ${result.status} (${hasUrl})`,
           "SyncLabs"
         );
 
@@ -523,7 +547,79 @@ export const generateScene = inngest.createFunction(
 
       if (status.status === "completed" && status.videoUrl) {
         lipsyncVideoUrl = status.videoUrl;
+        await createLog(
+          sceneId,
+          projectId,
+          "LIPSYNC_APPLICATION",
+          "INFO",
+          `Lip-sync completed successfully after ${i + 1} polls`,
+          "SyncLabs"
+        );
         break;
+      }
+
+      // CRITICAL: If completed but no URL, try direct API recovery
+      if (status.status === "completed" && !status.videoUrl) {
+        completedWithoutUrl = true;
+        await createLog(
+          sceneId,
+          projectId,
+          "LIPSYNC_APPLICATION",
+          "WARN",
+          `Lip-sync reports completed but no URL - attempting direct API recovery`,
+          "SyncLabs"
+        );
+
+        // Try direct API call to get the URL
+        const recoveryResult = await step.run(`recover-lipsync-${i}`, async (): Promise<{ success: boolean; url?: string }> => {
+          const SYNCLABS_API_URL = "https://api.sync.so/v2";
+          const response = await fetch(`${SYNCLABS_API_URL}/generate/${lipsyncJobId}`, {
+            headers: { "x-api-key": process.env.SYNCLABS_API_KEY! },
+          });
+
+          if (!response.ok) {
+            return { success: false };
+          }
+
+          const data = await response.json();
+          // Try ALL possible URL field names
+          const url = data.output_url || data.outputUrl || data.video_url ||
+                     data.videoUrl || data.result?.url || data.output?.url ||
+                     data.result || (Array.isArray(data.output) && data.output[0]?.url);
+
+          if (url && typeof url === 'string' && url.startsWith('http')) {
+            await createLog(
+              sceneId,
+              projectId,
+              "LIPSYNC_APPLICATION",
+              "INFO",
+              `Recovery successful - found URL in API response`,
+              "SyncLabs"
+            );
+            return { success: true, url };
+          }
+
+          // Log the actual response for debugging
+          await createLog(
+            sceneId,
+            projectId,
+            "LIPSYNC_APPLICATION",
+            "DEBUG",
+            `API response fields: ${Object.keys(data).join(', ')}`,
+            "SyncLabs",
+            { responsePayload: data }
+          );
+
+          return { success: false };
+        });
+
+        if (recoveryResult.success && recoveryResult.url) {
+          lipsyncVideoUrl = recoveryResult.url;
+          break;
+        }
+
+        // If recovery failed, wait a bit longer and try again
+        await step.sleep(`wait-recovery-${i}`, "5s");
       }
 
       if (status.status === "failed") {
@@ -539,16 +635,60 @@ export const generateScene = inngest.createFunction(
       }
     }
 
+    // Final recovery attempt if we timed out
     if (!lipsyncVideoUrl) {
-      await createLog(
-        sceneId,
-        projectId,
-        "LIPSYNC_APPLICATION",
-        "ERROR",
-        "Lip-sync generation timed out after 10 minutes",
-        "SyncLabs"
-      );
-      throw new Error("Lip-sync generation timed out");
+      const finalRecovery = await step.run("final-lipsync-recovery", async (): Promise<{ success: boolean; url?: string; status?: string }> => {
+        await createLog(
+          sceneId,
+          projectId,
+          "LIPSYNC_APPLICATION",
+          "WARN",
+          `Polling exhausted after ${pollCount + 1} attempts - attempting final recovery`,
+          "SyncLabs"
+        );
+
+        const SYNCLABS_API_URL = "https://api.sync.so/v2";
+        const response = await fetch(`${SYNCLABS_API_URL}/generate/${lipsyncJobId}`, {
+          headers: { "x-api-key": process.env.SYNCLABS_API_KEY! },
+        });
+
+        if (!response.ok) {
+          return { success: false };
+        }
+
+        const data = await response.json();
+        const url = data.output_url || data.outputUrl || data.video_url ||
+                   data.videoUrl || data.result?.url || data.output?.url ||
+                   data.result || (Array.isArray(data.output) && data.output[0]?.url);
+
+        if (url && typeof url === 'string' && url.startsWith('http')) {
+          return { success: true, url };
+        }
+
+        return { success: false, status: data.status };
+      });
+
+      if (finalRecovery.success && finalRecovery.url) {
+        lipsyncVideoUrl = finalRecovery.url;
+        await createLog(
+          sceneId,
+          projectId,
+          "LIPSYNC_APPLICATION",
+          "INFO",
+          "Final recovery successful",
+          "SyncLabs"
+        );
+      } else {
+        await createLog(
+          sceneId,
+          projectId,
+          "LIPSYNC_APPLICATION",
+          "ERROR",
+          `Lip-sync failed after ${pollCount + 1} polls and recovery attempts. Job status: ${finalRecovery.status || 'unknown'}`,
+          "SyncLabs"
+        );
+        throw new Error(`Lip-sync generation failed - job may still be processing. Job ID: ${lipsyncJobId}`);
+      }
     }
 
     // =========================================================================
