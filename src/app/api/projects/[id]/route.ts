@@ -1,6 +1,21 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
 
+// Helper to serialize BigInt values to strings for JSON
+function serializeBigInt(obj: unknown): unknown {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj === 'bigint') return obj.toString();
+  if (Array.isArray(obj)) return obj.map(serializeBigInt);
+  if (typeof obj === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = serializeBigInt(value);
+    }
+    return result;
+  }
+  return obj;
+}
+
 // GET /api/projects/[id] - Get a single project with scenes
 export async function GET(
   request: Request,
@@ -25,7 +40,8 @@ export async function GET(
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
 
-    return NextResponse.json(project);
+    // Serialize BigInt values before returning
+    return NextResponse.json(serializeBigInt(project));
   } catch (error) {
     console.error("Error fetching project:", error);
     // Return more detailed error for debugging
