@@ -179,21 +179,11 @@ export default function ProjectPage({
   const [signedVideoUrl, setSignedVideoUrl] = useState<string | null>(null);
   const [loadingVideo, setLoadingVideo] = useState(false);
 
-  // Fetch signed URL when scene detail opens
-  async function fetchSignedVideoUrl(sceneId: string) {
-    try {
-      setLoadingVideo(true);
-      setSignedVideoUrl(null);
-      const res = await fetch(`/api/scenes/${sceneId}/video-url`);
-      if (res.ok) {
-        const data = await res.json();
-        setSignedVideoUrl(data.url);
-      }
-    } catch (error) {
-      console.error("Failed to fetch video URL:", error);
-    } finally {
-      setLoadingVideo(false);
-    }
+  // Set video URL when scene detail opens
+  // Uses proxy endpoint to stream video through Vercel (bypasses R2 access restrictions)
+  function setVideoUrl(sceneId: string) {
+    setSignedVideoUrl(`/api/scenes/${sceneId}/video`);
+    setLoadingVideo(false);
   }
 
   // Check if a scene is stuck (in APPLYING_LIPSYNC for more than 3 minutes)
@@ -659,7 +649,7 @@ export default function ProjectPage({
                   setShowSceneDetail(true);
                   // Fetch signed URL for video playback
                   if (scene.finalVideoUrl) {
-                    fetchSignedVideoUrl(scene.id);
+                    setVideoUrl(scene.id);
                   }
                 }}
               >
@@ -1096,7 +1086,7 @@ export default function ProjectPage({
                     <Video className="w-12 h-12 mb-2" />
                     <p className="text-sm">Video unavailable</p>
                     <button
-                      onClick={() => fetchSignedVideoUrl(selectedScene.id)}
+                      onClick={() => setVideoUrl(selectedScene.id)}
                       className="mt-2 text-xs text-blue-400 hover:text-blue-300"
                     >
                       Retry loading
