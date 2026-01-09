@@ -6,17 +6,30 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-const r2Client = new S3Client({
-  region: "auto",
-  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-  credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-  },
-});
+// Lazy-initialize R2 client to ensure environment variables are available
+let _r2Client: S3Client | null = null;
 
-const BUCKET_NAME = process.env.R2_BUCKET_NAME || "devatar";
-const PUBLIC_URL = process.env.R2_PUBLIC_URL;
+function getR2Client(): S3Client {
+  if (!_r2Client) {
+    _r2Client = new S3Client({
+      region: "auto",
+      endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+      },
+    });
+  }
+  return _r2Client;
+}
+
+function getBucketName(): string {
+  return process.env.R2_BUCKET_NAME || "devatar";
+}
+
+function getPublicUrl(): string | undefined {
+  return process.env.R2_PUBLIC_URL;
+}
 
 export interface UploadResult {
   key: string;
@@ -35,15 +48,16 @@ export async function uploadToR2(
   const bodyBuffer = buffer instanceof Buffer ? buffer : Buffer.from(new Uint8Array(buffer));
 
   const command = new PutObjectCommand({
-    Bucket: BUCKET_NAME,
+    Bucket: getBucketName(),
     Key: key,
     Body: bodyBuffer,
     ContentType: contentType,
   });
 
-  await r2Client.send(command);
+  await getR2Client().send(command);
 
-  const url = PUBLIC_URL ? `${PUBLIC_URL}/${key}` : await getSignedDownloadUrl(key);
+  const publicUrl = getPublicUrl();
+  const url = publicUrl ? `${publicUrl}/${key}` : await getSignedDownloadUrl(key);
 
   return { key, url };
 }
@@ -56,11 +70,11 @@ export async function getSignedDownloadUrl(
   expiresIn: number = 3600
 ): Promise<string> {
   const command = new GetObjectCommand({
-    Bucket: BUCKET_NAME,
+    Bucket: getBucketName(),
     Key: key,
   });
 
-  return getSignedUrl(r2Client, command, { expiresIn });
+  return getSignedUrl(getR2Client(), command, { expiresIn });
 }
 
 /**
@@ -68,11 +82,11 @@ export async function getSignedDownloadUrl(
  */
 export async function downloadFromR2(key: string): Promise<Buffer> {
   const command = new GetObjectCommand({
-    Bucket: BUCKET_NAME,
+    Bucket: getBucketName(),
     Key: key,
   });
 
-  const response = await r2Client.send(command);
+  const response = await getR2Client().send(command);
   const stream = response.Body;
 
   if (!stream) {
@@ -92,11 +106,11 @@ export async function downloadFromR2(key: string): Promise<Buffer> {
  */
 export async function deleteFromR2(key: string): Promise<void> {
   const command = new DeleteObjectCommand({
-    Bucket: BUCKET_NAME,
+    Bucket: getBucketName(),
     Key: key,
   });
 
-  await r2Client.send(command);
+  await getR2Client().send(command);
 }
 
 /**

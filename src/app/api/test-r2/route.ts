@@ -6,6 +6,7 @@ import {
   DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { getSignedDownloadUrl as getSignedDownloadUrlFromModule } from "@/lib/storage/r2";
 
 /**
  * GET /api/test-r2
@@ -175,7 +176,68 @@ export async function GET() {
     });
   }
 
-  // Step 6: Test direct SDK download (GetObject)
+  // Step 6: Test signed URL from r2.ts module (uses lazy-initialized client)
+  let moduleSignedUrl: string;
+  try {
+    moduleSignedUrl = await getSignedDownloadUrlFromModule(testKey, 3600);
+
+    diagnostics.push({
+      step: "6. Module Signed URL Generation",
+      success: true,
+      details: {
+        urlLength: moduleSignedUrl.length,
+        urlPreview: moduleSignedUrl.substring(0, 100) + "...",
+        matchesDirect: moduleSignedUrl.split("?")[0] === signedUrl.split("?")[0],
+      },
+    });
+  } catch (error) {
+    diagnostics.push({
+      step: "6. Module Signed URL Generation",
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    moduleSignedUrl = "";
+  }
+
+  // Step 7: Test module signed URL access
+  if (moduleSignedUrl) {
+    try {
+      const response = await fetch(moduleSignedUrl);
+      const responseText = await response.text();
+
+      if (response.ok) {
+        diagnostics.push({
+          step: "7. Fetch Module Signed URL",
+          success: true,
+          details: {
+            status: response.status,
+            statusText: response.statusText,
+            contentLength: responseText.length,
+            contentMatch: responseText === testContent,
+          },
+        });
+      } else {
+        diagnostics.push({
+          step: "7. Fetch Module Signed URL",
+          success: false,
+          error: `HTTP ${response.status}: ${response.statusText}`,
+          details: {
+            status: response.status,
+            statusText: response.statusText,
+            responseBody: responseText.substring(0, 500),
+          },
+        });
+      }
+    } catch (error) {
+      diagnostics.push({
+        step: "7. Fetch Module Signed URL",
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // Step 8: Test direct SDK download (GetObject)
   try {
     const getCommand = new GetObjectCommand({
       Bucket: bucketName,
@@ -193,7 +255,7 @@ export async function GET() {
       const content = Buffer.concat(chunks).toString("utf-8");
 
       diagnostics.push({
-        step: "6. Direct SDK Download (GetObject)",
+        step: "8. Direct SDK Download (GetObject)",
         success: true,
         details: {
           contentLength: content.length,
@@ -202,20 +264,20 @@ export async function GET() {
       });
     } else {
       diagnostics.push({
-        step: "6. Direct SDK Download (GetObject)",
+        step: "8. Direct SDK Download (GetObject)",
         success: false,
         error: "No body in response",
       });
     }
   } catch (error) {
     diagnostics.push({
-      step: "6. Direct SDK Download (GetObject)",
+      step: "8. Direct SDK Download (GetObject)",
       success: false,
       error: error instanceof Error ? error.message : String(error),
     });
   }
 
-  // Step 7: Cleanup - delete test file
+  // Step 9: Cleanup - delete test file
   try {
     const deleteCommand = new DeleteObjectCommand({
       Bucket: bucketName,
@@ -225,12 +287,12 @@ export async function GET() {
     await r2Client.send(deleteCommand);
 
     diagnostics.push({
-      step: "7. Cleanup (DeleteObject)",
+      step: "9. Cleanup (DeleteObject)",
       success: true,
     });
   } catch (error) {
     diagnostics.push({
-      step: "7. Cleanup (DeleteObject)",
+      step: "9. Cleanup (DeleteObject)",
       success: false,
       error: error instanceof Error ? error.message : String(error),
     });
