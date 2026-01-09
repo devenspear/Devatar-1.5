@@ -656,11 +656,17 @@ export default function ProjectPage({
                 <div
                   className="aspect-video bg-gray-800 flex items-center justify-center relative"
                 >
-                  {scene.thumbnailUrl || scene.finalVideoUrl ? (
-                    <video
-                      src={scene.finalVideoUrl || ""}
-                      poster={scene.thumbnailUrl || ""}
+                  {scene.imageUrl || scene.thumbnailUrl || scene.finalVideoUrl ? (
+                    // Use proxy endpoint for thumbnail to bypass R2 restrictions
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={`/api/scenes/${scene.id}/video?type=image`}
+                      alt={scene.name || "Scene thumbnail"}
                       className="w-full h-full object-cover"
+                      onError={(e) => {
+                        // If image fails, hide it
+                        (e.target as HTMLImageElement).style.display = "none";
+                      }}
                     />
                   ) : (
                     <Video className="w-12 h-12 text-gray-700" />
