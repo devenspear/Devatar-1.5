@@ -18,6 +18,7 @@ enum AssetType {
   VOICE_SAMPLE
   BACKGROUND
   SOUND_EFFECT
+  LORA_MODEL      // Digital Twin: .safetensors file for identity persistence
 }
 
 enum AssetStatus {
@@ -138,9 +139,16 @@ model Scene {
   finalVideoUrl   String?
   thumbnailUrl    String?
 
-  // Headshot override
+  // Headshot override (Standard Mode)
   headshotId      String?
   headshot        Asset?       @relation("SceneHeadshot", fields: [headshotId], references: [id])
+
+  // Identity profile (Digital Twin Mode)
+  identityId      String?
+  identity        IdentityProfile? @relation("SceneIdentity", fields: [identityId], references: [id])
+
+  // Generation mode tracking
+  generationMode  String?      // "standard" or "digital-twin"
 
   // Error tracking
   failureReason   String?      @db.Text
@@ -170,6 +178,7 @@ enum LogLevel {
 enum GenerationStep {
   AUDIO_GENERATION
   IMAGE_GENERATION
+  IDENTITY_ANCHOR      // Digital Twin: LoRA-based identity rendering
   VIDEO_GENERATION
   LIPSYNC_APPLICATION
   SOUND_FX_MIXING
@@ -205,6 +214,45 @@ model GenerationLog {
   @@index([step])
   @@index([level])
   @@index([createdAt])
+}
+
+// ============================================================================
+// IDENTITY PROFILES (Digital Twin)
+// ============================================================================
+
+model IdentityProfile {
+  id              String    @id @default(cuid())
+  name            String    @unique      // e.g., "deven-primary"
+  displayName     String                 // e.g., "Deven Spear"
+  description     String?   @db.Text
+
+  // LoRA Configuration
+  triggerWord     String    @unique      // e.g., "TOK_DEVEN"
+  loraKey         String?                // R2 key for .safetensors file
+  loraUrl         String?                // Full URL (for Fal.ai)
+  loraScale       Float     @default(0.95)
+  baseModel       String    @default("flux-dev")  // "flux-dev" or "flux-schnell"
+
+  // Voice Configuration
+  voiceId         String?               // ElevenLabs voice ID
+  voiceModel      String    @default("eleven_turbo_v2_5")
+  voiceStability  Float     @default(0.5)
+  voiceSimilarity Float     @default(0.8)
+  voiceStyle      Float     @default(0.2)
+  voiceSpeakerBoost Boolean @default(true)
+
+  // Status
+  isDefault       Boolean   @default(false)
+  isActive        Boolean   @default(true)
+
+  // Relations
+  scenes          Scene[]   @relation("SceneIdentity")
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([isDefault])
+  @@index([isActive])
 }
 
 // ============================================================================

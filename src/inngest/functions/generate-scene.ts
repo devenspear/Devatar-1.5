@@ -5,10 +5,14 @@
  * This runs as a background job via Inngest to avoid Vercel function timeouts.
  * Steps:
  * 1. Audio Generation (ElevenLabs)
- * 2. Image/Headshot Selection (Flux fallback)
+ * 2. Image/Headshot Selection OR Digital Twin Generation (Fal.ai + LoRA)
  * 3. Video Generation (Kling AI)
  * 4. Lip-sync Application (Sync Labs)
  * 5. Final Upload to R2
+ *
+ * Generation Modes:
+ * - "standard": Uses uploaded headshot images (existing behavior)
+ * - "digital-twin": Uses Fal.ai with custom LoRA for identity-locked generation
  */
 
 import { inngest } from "../client";
@@ -30,6 +34,15 @@ import {
 } from "@/lib/storage/r2";
 import { DEVEN_VOICE_ID, DEVEN_VOICE_SETTINGS } from "@/lib/avatar-identity";
 
+// Digital Twin imports
+import { generateWithLora, validateLoraUrl } from "@/lib/ai/fal";
+import {
+  getDefaultIdentity,
+  buildIdentityPrompt,
+  type GenerationMode,
+  type IdentityProfile as ConfigIdentityProfile,
+} from "@/config/identity";
+
 // Helper function to create generation logs
 async function createLog(
   sceneId: string,
@@ -37,6 +50,7 @@ async function createLog(
   step:
     | "AUDIO_GENERATION"
     | "IMAGE_GENERATION"
+    | "IDENTITY_ANCHOR"  // Digital Twin: LoRA-based identity generation
     | "VIDEO_GENERATION"
     | "LIPSYNC_APPLICATION"
     | "SOUND_FX_MIXING"
@@ -104,7 +118,7 @@ export const generateScene = inngest.createFunction(
     const { sceneId } = event.data as { sceneId: string };
 
     // =========================================================================
-    // Get scene data with headshot
+    // Get scene data with headshot and identity profile
     // =========================================================================
     const scene = await step.run("get-scene", async () => {
       const s = await prisma.scene.findUnique({
@@ -112,11 +126,15 @@ export const generateScene = inngest.createFunction(
         include: {
           project: true,
           headshot: true,
+          identity: true,  // Digital Twin: Include identity profile if assigned
         },
       });
       if (!s) throw new Error(`Scene not found: ${sceneId}`);
       return s;
     });
+
+    // Determine generation mode (digital-twin vs standard)
+    const generationMode: GenerationMode = (scene.generationMode as GenerationMode) || "standard";
 
     const projectId = scene.projectId;
     const dialogue = scene.dialogue || "Hello, this is a test.";
@@ -212,7 +230,7 @@ export const generateScene = inngest.createFunction(
     });
 
     // =========================================================================
-    // Step 2: Use Headshot or Generate Image (Flux)
+    // Step 2: Image Generation (Feature-Flagged: Standard vs Digital Twin)
     // =========================================================================
     const imageResult = await step.run("get-or-generate-image", async () => {
       const startTime = Date.now();
@@ -221,6 +239,188 @@ export const generateScene = inngest.createFunction(
         where: { id: sceneId },
         data: { status: "GENERATING_IMAGE" },
       });
+
+      // -----------------------------------------------------------------------
+      // DIGITAL TWIN MODE: Use Fal.ai with LoRA for identity-locked generation
+      // -----------------------------------------------------------------------
+      if (generationMode === "digital-twin") {
+        await createLog(
+          sceneId,
+          projectId,
+          "IMAGE_GENERATION",
+          "INFO",
+          "Digital Twin mode activated - checking identity configuration",
+          "System"
+        );
+
+        // Get identity profile (from scene's database identity or config default)
+        // Normalize to a common structure for LoRA generation
+        const dbIdentity = scene.identity;
+        const configIdentity = getDefaultIdentity();
+
+        // Use database identity if available, otherwise fall back to config
+        const loraUrl = dbIdentity?.loraUrl || configIdentity.loraUrl;
+        const loraScale = dbIdentity?.loraScale || configIdentity.loraScale;
+        const triggerWord = dbIdentity?.triggerWord || configIdentity.triggerWord;
+        const identityName = dbIdentity?.displayName || configIdentity.displayName;
+
+        // Check if LoRA is configured (loraUrl must be set and non-empty)
+        if (!loraUrl || loraUrl.length === 0) {
+          await createLog(
+            sceneId,
+            projectId,
+            "IDENTITY_ANCHOR",
+            "WARN",
+            "Digital Twin mode requested but LoRA not configured - falling back to standard mode",
+            "System"
+          );
+          // Fall through to standard mode below
+        } else {
+          // Validate LoRA URL accessibility
+          await createLog(
+            sceneId,
+            projectId,
+            "IDENTITY_ANCHOR",
+            "INFO",
+            `Validating LoRA URL accessibility for ${identityName}: ${loraUrl.substring(0, 60)}...`,
+            "Fal.ai"
+          );
+
+          const loraValidation = await validateLoraUrl(loraUrl);
+          if (!loraValidation.valid) {
+            await createLog(
+              sceneId,
+              projectId,
+              "IDENTITY_ANCHOR",
+              "ERROR",
+              `LoRA validation failed: ${loraValidation.message}`,
+              "Fal.ai",
+              { errorDetails: loraValidation.details }
+            );
+            throw new Error(`Digital Twin LoRA validation failed: ${loraValidation.message}`);
+          }
+
+          await createLog(
+            sceneId,
+            projectId,
+            "IDENTITY_ANCHOR",
+            "INFO",
+            `LoRA validated: ${(loraValidation.details?.contentLength || 0) / 1_000_000}MB`,
+            "Fal.ai"
+          );
+
+          // Build identity-enhanced prompt using the normalized values
+          // We create a minimal identity object for buildIdentityPrompt
+          const promptIdentity: ConfigIdentityProfile = {
+            id: dbIdentity?.id || configIdentity.id,
+            name: dbIdentity?.name || configIdentity.name,
+            displayName: identityName,
+            description: dbIdentity?.description || configIdentity.description,
+            triggerWord: triggerWord,
+            loraUrl: loraUrl,
+            loraScale: loraScale,
+            baseModel: (dbIdentity?.baseModel as "flux-dev" | "flux-schnell") || configIdentity.baseModel,
+            voiceId: dbIdentity?.voiceId || configIdentity.voiceId,
+            voiceSettings: configIdentity.voiceSettings, // Always use config voice settings
+            voiceModel: (dbIdentity?.voiceModel as "eleven_multilingual_v2" | "eleven_turbo_v2_5") || configIdentity.voiceModel,
+            isDefault: dbIdentity?.isDefault || configIdentity.isDefault,
+            isActive: dbIdentity?.isActive !== undefined ? dbIdentity.isActive : configIdentity.isActive,
+          };
+
+          const identityPrompt = buildIdentityPrompt(
+            scene.environment || "professional studio setting",
+            promptIdentity,
+            {
+              environment: scene.environment || undefined,
+              wardrobe: scene.wardrobe || undefined,
+              moodLighting: scene.moodLighting || undefined,
+            }
+          );
+
+          await createLog(
+            sceneId,
+            projectId,
+            "IDENTITY_ANCHOR",
+            "INFO",
+            `Generating identity anchor with trigger word: ${triggerWord}`,
+            "Fal.ai",
+            { requestPayload: { promptPreview: identityPrompt.substring(0, 100) } }
+          );
+
+          try {
+            // Generate with Fal.ai + LoRA
+            const falResult = await generateWithLora({
+              prompt: identityPrompt,
+              loras: [{
+                path: loraUrl,
+                scale: loraScale,
+              }],
+              imageSize: "landscape_16_9",
+              numInferenceSteps: 28,
+              guidanceScale: 3.5,
+            });
+
+            // Download and upload to R2
+            const imageResponse = await fetch(falResult.imageUrl);
+            const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+            const key = generateSceneKey(projectId, sceneId, "image");
+            const { url } = await uploadToR2(imageBuffer, key, "image/png");
+
+            // Update scene with digital twin metadata
+            await prisma.scene.update({
+              where: { id: sceneId },
+              data: {
+                imageUrl: url,
+                imagePrompt: identityPrompt,
+                imageModel: "fal-ai/flux-lora",
+                generationMode: "digital-twin",
+              },
+            });
+
+            await createLog(
+              sceneId,
+              projectId,
+              "IDENTITY_ANCHOR",
+              "INFO",
+              `Digital Twin image generated successfully in ${falResult.inferenceTime}ms`,
+              "Fal.ai",
+              {
+                durationMs: Date.now() - startTime,
+                responsePayload: {
+                  width: falResult.width,
+                  height: falResult.height,
+                  seed: falResult.seed,
+                },
+              }
+            );
+
+            return { imageUrl: url, imageKey: key };
+          } catch (falError) {
+            await createLog(
+              sceneId,
+              projectId,
+              "IDENTITY_ANCHOR",
+              "ERROR",
+              `Fal.ai generation failed: ${falError instanceof Error ? falError.message : String(falError)}`,
+              "Fal.ai",
+              { errorDetails: { error: String(falError) } }
+            );
+            throw new Error(`Digital Twin generation failed: ${falError instanceof Error ? falError.message : String(falError)}`);
+          }
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // STANDARD MODE: Use uploaded headshot or Flux fallback
+      // -----------------------------------------------------------------------
+      await createLog(
+        sceneId,
+        projectId,
+        "IMAGE_GENERATION",
+        "INFO",
+        "Standard mode - checking for headshot",
+        "System"
+      );
 
       // Check for headshot: scene-specific OR default headshot from settings
       let headshotToUse: { r2Key: string; r2Url: string | null; name: string } | null = scene.headshot;
@@ -270,6 +470,7 @@ export const generateScene = inngest.createFunction(
             imageUrl: headshotToUse.r2Url || "",
             imagePrompt: "Deven's uploaded headshot",
             imageModel: "uploaded",
+            generationMode: "standard",
           },
         });
 
@@ -307,6 +508,7 @@ export const generateScene = inngest.createFunction(
           imageUrl: url,
           imagePrompt,
           imageModel: "Qubico/flux1-schnell",
+          generationMode: "standard",
         },
       });
 

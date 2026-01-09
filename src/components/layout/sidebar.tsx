@@ -14,6 +14,7 @@ import {
   PanelLeft,
   MousePointer2,
   User,
+  Fingerprint,
 } from "lucide-react";
 import { useSidebar, SidebarMode } from "@/contexts/sidebar-context";
 import {
@@ -33,6 +34,7 @@ const navigation: NavItem[] = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Projects", href: "/projects", icon: FolderOpen },
   { name: "Assets", href: "/assets", icon: User },
+  { name: "Identities", href: "/identities", icon: Fingerprint },
   { name: "Logs", href: "/logs", icon: Activity },
   { name: "Settings", href: "/settings", icon: Settings },
 ];

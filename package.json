@@ -1,11 +1,11 @@
 {
-  "name": "devatar",
-  "version": "0.5.0",
-  "description": "AI Avatar Video Generation Platform",
+  "name": "devatar-1.5",
+  "version": "1.5.0",
+  "description": "AI Avatar Video Generation Platform with Digital Twin",
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/devenspear/devatar"
+    "url": "https://github.com/devenspear/Devatar-1.5"
   },
   "scripts": {
     "dev": "next dev",
@@ -25,6 +25,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.965.0",
     "@aws-sdk/s3-request-presigner": "^3.965.0",
+    "@fal-ai/client": "^1.8.3",
     "@google/generative-ai": "^0.24.1",
     "@prisma/client": "^5.22.0",
     "@radix-ui/react-dialog": "^1.1.15",
