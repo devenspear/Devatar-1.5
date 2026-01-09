@@ -175,7 +175,8 @@ export async function checkLipsyncStatus(jobId: string): Promise<LipsyncTask> {
   const data = await response.json();
 
   let status: LipsyncTask["status"] = "pending";
-  switch (data.status) {
+  const rawStatus = data.status?.toUpperCase();
+  switch (rawStatus) {
     case "PENDING":
     case "QUEUED":
       status = "pending";
@@ -184,6 +185,7 @@ export async function checkLipsyncStatus(jobId: string): Promise<LipsyncTask> {
       status = "processing";
       break;
     case "COMPLETED":
+    case "COMPLETE":
       status = "completed";
       break;
     case "FAILED":
@@ -192,11 +194,22 @@ export async function checkLipsyncStatus(jobId: string): Promise<LipsyncTask> {
       break;
   }
 
+  // Try multiple possible output URL field names (Sync Labs API may vary)
+  const videoUrl =
+    data.output_url ||
+    data.outputUrl ||
+    data.video_url ||
+    data.videoUrl ||
+    data.result?.url ||
+    data.output?.url ||
+    data.result ||
+    (Array.isArray(data.output) && data.output[0]?.url);
+
   return {
     jobId,
     status,
-    videoUrl: data.output_url,
-    error: data.error,
+    videoUrl,
+    error: data.error || data.message,
   };
 }
 
