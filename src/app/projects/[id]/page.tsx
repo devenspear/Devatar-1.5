@@ -176,6 +176,25 @@ export default function ProjectPage({
   const [deleting, setDeleting] = useState<string | null>(null);
   const [sceneToDelete, setSceneToDelete] = useState<Scene | null>(null);
   const [recovering, setRecovering] = useState<string | null>(null);
+  const [signedVideoUrl, setSignedVideoUrl] = useState<string | null>(null);
+  const [loadingVideo, setLoadingVideo] = useState(false);
+
+  // Fetch signed URL when scene detail opens
+  async function fetchSignedVideoUrl(sceneId: string) {
+    try {
+      setLoadingVideo(true);
+      setSignedVideoUrl(null);
+      const res = await fetch(`/api/scenes/${sceneId}/video-url`);
+      if (res.ok) {
+        const data = await res.json();
+        setSignedVideoUrl(data.url);
+      }
+    } catch (error) {
+      console.error("Failed to fetch video URL:", error);
+    } finally {
+      setLoadingVideo(false);
+    }
+  }
 
   // Check if a scene is stuck (in APPLYING_LIPSYNC for more than 3 minutes)
   const isSceneStuck = (scene: Scene) => {
@@ -638,6 +657,10 @@ export default function ProjectPage({
                 onClick={() => {
                   setSelectedScene(scene);
                   setShowSceneDetail(true);
+                  // Fetch signed URL for video playback
+                  if (scene.finalVideoUrl) {
+                    fetchSignedVideoUrl(scene.id);
+                  }
                 }}
               >
                 <div
@@ -1025,6 +1048,7 @@ export default function ProjectPage({
           onClick={() => {
             setShowSceneDetail(false);
             setSelectedScene(null);
+            setSignedVideoUrl(null);
           }}
         >
           <div
@@ -1056,12 +1080,29 @@ export default function ProjectPage({
             {/* Video Preview */}
             {selectedScene.finalVideoUrl && (
               <div className="bg-black">
-                <video
-                  src={selectedScene.finalVideoUrl}
-                  controls
-                  className="w-full max-h-[400px]"
-                  poster={selectedScene.thumbnailUrl || undefined}
-                />
+                {loadingVideo ? (
+                  <div className="w-full h-[300px] flex items-center justify-center">
+                    <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+                  </div>
+                ) : signedVideoUrl ? (
+                  <video
+                    src={signedVideoUrl}
+                    controls
+                    className="w-full max-h-[400px]"
+                    poster={selectedScene.thumbnailUrl || undefined}
+                  />
+                ) : (
+                  <div className="w-full h-[300px] flex flex-col items-center justify-center text-gray-500">
+                    <Video className="w-12 h-12 mb-2" />
+                    <p className="text-sm">Video unavailable</p>
+                    <button
+                      onClick={() => fetchSignedVideoUrl(selectedScene.id)}
+                      className="mt-2 text-xs text-blue-400 hover:text-blue-300"
+                    >
+                      Retry loading
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
