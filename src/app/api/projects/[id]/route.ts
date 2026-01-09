@@ -14,6 +14,9 @@ export async function GET(
       include: {
         scenes: {
           orderBy: { orderIndex: "asc" },
+          include: {
+            headshot: true,
+          },
         },
       },
     });

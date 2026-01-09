@@ -15,6 +15,17 @@ import {
   Film,
   Zap,
   User,
+  X,
+  Clock,
+  Download,
+  ExternalLink,
+  Settings,
+  FileText,
+  Camera,
+  Shirt,
+  Move,
+  Sun,
+  RefreshCw,
 } from "lucide-react";
 
 interface Asset {
@@ -30,13 +41,42 @@ interface Scene {
   name: string;
   orderIndex: number;
   status: string;
+  // Scene prompts
   dialogue: string | null;
   environment: string | null;
+  wardrobe: string | null;
+  movement: string | null;
+  camera: string | null;
+  soundEffects: string | null;
+  targetDuration: number;
+  moodLighting: string;
+  // Generated outputs
+  audioUrl: string | null;
+  audioDuration: number | null;
+  voiceId: string | null;
+  audioModel: string | null;
+  imageUrl: string | null;
+  imagePrompt: string | null;
+  imageModel: string | null;
+  rawVideoUrl: string | null;
+  videoPrompt: string | null;
+  videoDuration: number | null;
+  videoModel: string | null;
+  videoMode: string | null;
+  lipsyncVideoUrl: string | null;
+  lipsyncModel: string | null;
   finalVideoUrl: string | null;
   thumbnailUrl: string | null;
-  failureReason: string | null;
+  // Headshot
   headshotId: string | null;
+  headshot: Asset | null;
+  // Error tracking
+  failureReason: string | null;
+  retryCount: number;
+  lastAttemptAt: string | null;
+  // Timestamps
   createdAt: string;
+  updatedAt: string;
 }
 
 interface Project {
@@ -115,6 +155,7 @@ export default function ProjectPage({
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
+  const [showSceneDetail, setShowSceneDetail] = useState(false);
   const [headshots, setHeadshots] = useState<Asset[]>([]);
   const [sceneForm, setSceneForm] = useState({
     name: "",
@@ -128,6 +169,7 @@ export default function ProjectPage({
   });
   const [creating, setCreating] = useState(false);
   const [generating, setGenerating] = useState<string | null>(null);
+  const [generatingSceneName, setGeneratingSceneName] = useState<string | null>(null);
   const [progress, setProgress] = useState<GenerationProgress | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -216,7 +258,9 @@ export default function ProjectPage({
   }
 
   async function generateScene(sceneId: string) {
+    const scene = project?.scenes.find(s => s.id === sceneId);
     setGenerating(sceneId);
+    setGeneratingSceneName(scene?.name || "Scene");
     setProgress(null);
     setErrorMessage(null);
 
@@ -253,11 +297,16 @@ export default function ProjectPage({
               if (data.error) {
                 setErrorMessage(data.error);
                 setGenerating(null);
+                setGeneratingSceneName(null);
               }
 
               if (data.step === 5 && data.status === "completed") {
-                // Generation complete
-                setGenerating(null);
+                // Generation complete - keep progress visible briefly before clearing
+                setTimeout(() => {
+                  setGenerating(null);
+                  setGeneratingSceneName(null);
+                  setProgress(null);
+                }, 2000);
                 fetchProject();
               }
             } catch {
@@ -269,8 +318,9 @@ export default function ProjectPage({
     } catch (error) {
       console.error("Error generating scene:", error);
       setErrorMessage(error instanceof Error ? error.message : "Generation failed");
-    } finally {
       setGenerating(null);
+      setGeneratingSceneName(null);
+    } finally {
       fetchProject();
     }
   }
@@ -330,45 +380,66 @@ export default function ProjectPage({
         </button>
       </div>
 
-      {/* Generation Progress */}
-      {generating && progress && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <h3 className="font-semibold text-gray-100 mb-4">Generating Scene...</h3>
-          <div className="flex items-center gap-4 mb-4">
-            {[1, 2, 3, 4, 5].map((step) => (
-              <div key={step} className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                      progress.step > step
-                        ? "bg-green-500/20 text-green-400"
-                        : progress.step === step
-                        ? "bg-blue-500/20 text-blue-400"
-                        : "bg-gray-800 text-gray-500"
-                    }`}
-                  >
-                    {progress.step > step ? (
-                      <CheckCircle className="w-4 h-4" />
-                    ) : progress.step === step ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      step
-                    )}
-                  </div>
-                  <span
-                    className={`text-sm ${
-                      progress.step >= step ? "text-gray-300" : "text-gray-600"
-                    }`}
-                  >
-                    {getStepLabel(step)}
-                  </span>
-                </div>
+      {/* Persistent Generation Progress Header */}
+      {generating && (
+        <div className="sticky top-0 z-40 -mx-6 -mt-6 mb-6 bg-gradient-to-r from-blue-900/90 to-purple-900/90 backdrop-blur-sm border-b border-blue-500/30 shadow-lg">
+          <div className="px-6 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />
+                <span className="font-medium text-gray-100">
+                  Generating: {generatingSceneName}
+                </span>
               </div>
-            ))}
+              <span className="text-sm text-blue-300">
+                Step {progress?.step || 1} of 5
+              </span>
+            </div>
+
+            {/* Progress Steps */}
+            <div className="flex items-center gap-2">
+              {[
+                { step: 1, label: "Audio", icon: <Mic className="w-3 h-3" /> },
+                { step: 2, label: "Image", icon: <ImageIcon className="w-3 h-3" /> },
+                { step: 3, label: "Video", icon: <Film className="w-3 h-3" /> },
+                { step: 4, label: "Lip-sync", icon: <Zap className="w-3 h-3" /> },
+                { step: 5, label: "Complete", icon: <CheckCircle className="w-3 h-3" /> },
+              ].map(({ step, label, icon }) => (
+                <div key={step} className="flex items-center flex-1">
+                  <div
+                    className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium transition-all ${
+                      (progress?.step || 0) > step
+                        ? "bg-green-500/30 text-green-300"
+                        : (progress?.step || 0) === step
+                        ? "bg-blue-500/40 text-blue-200 ring-2 ring-blue-400/50"
+                        : "bg-gray-800/50 text-gray-500"
+                    }`}
+                  >
+                    {(progress?.step || 0) > step ? (
+                      <CheckCircle className="w-3 h-3" />
+                    ) : (progress?.step || 0) === step ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      icon
+                    )}
+                    <span className="hidden sm:inline">{label}</span>
+                  </div>
+                  {step < 5 && (
+                    <div className={`flex-1 h-0.5 mx-1 ${
+                      (progress?.step || 0) > step ? "bg-green-500/50" : "bg-gray-700"
+                    }`} />
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Current Status Message */}
+            {progress?.message && (
+              <p className="text-xs text-blue-200/70 mt-2 truncate">
+                {progress.message}
+              </p>
+            )}
           </div>
-          {progress.message && (
-            <p className="text-sm text-gray-400">{progress.message}</p>
-          )}
         </div>
       )}
 
@@ -407,11 +478,14 @@ export default function ProjectPage({
             return (
               <div
                 key={scene.id}
-                className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden"
+                className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden cursor-pointer hover:border-gray-700 transition-colors"
+                onClick={() => {
+                  setSelectedScene(scene);
+                  setShowSceneDetail(true);
+                }}
               >
                 <div
-                  className="aspect-video bg-gray-800 flex items-center justify-center relative cursor-pointer"
-                  onClick={() => scene.finalVideoUrl && setSelectedScene(scene)}
+                  className="aspect-video bg-gray-800 flex items-center justify-center relative"
                 >
                   {scene.thumbnailUrl || scene.finalVideoUrl ? (
                     <video
@@ -448,7 +522,10 @@ export default function ProjectPage({
                   )}
                   {scene.status === "DRAFT" || scene.status === "FAILED" ? (
                     <button
-                      onClick={() => generateScene(scene.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        generateScene(scene.id);
+                      }}
                       disabled={isGenerating || generating !== null}
                       className="w-full px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-500 transition-colors disabled:opacity-50"
                     >
@@ -466,13 +543,72 @@ export default function ProjectPage({
                       href={scene.finalVideoUrl}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
                       className="block w-full px-3 py-2 bg-gray-800 text-gray-200 rounded-lg text-sm text-center hover:bg-gray-700 transition-colors"
                     >
                       Download Video
                     </a>
                   ) : (
-                    <div className="w-full px-3 py-2 bg-gray-800 text-gray-400 rounded-lg text-sm text-center">
-                      Processing...
+                    <div className="w-full space-y-2">
+                      {/* Mini Progress Indicator */}
+                      <div className="flex items-center justify-between text-xs text-gray-400">
+                        <span>
+                          {isGenerating && progress
+                            ? `Step ${progress.step}/5 - ${getStepLabel(progress.step)}`
+                            : statusConfig(scene.status).label}
+                        </span>
+                        {isGenerating && progress && (
+                          <span className="text-blue-400">{Math.round((progress.step / 5) * 100)}%</span>
+                        )}
+                      </div>
+                      {/* Mini Progress Bar */}
+                      <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-500 ${
+                            isGenerating ? "bg-blue-500" : "bg-yellow-500"
+                          }`}
+                          style={{
+                            width: isGenerating && progress
+                              ? `${(progress.step / 5) * 100}%`
+                              : scene.status === "GENERATING_AUDIO" ? "20%"
+                              : scene.status === "GENERATING_IMAGE" ? "40%"
+                              : scene.status === "GENERATING_VIDEO" ? "60%"
+                              : scene.status === "APPLYING_LIPSYNC" ? "80%"
+                              : "10%"
+                          }}
+                        />
+                      </div>
+                      {/* Step Icons */}
+                      <div className="flex items-center justify-between px-1">
+                        {[
+                          { step: 1, icon: <Mic className="w-3 h-3" />, status: "GENERATING_AUDIO" },
+                          { step: 2, icon: <ImageIcon className="w-3 h-3" />, status: "GENERATING_IMAGE" },
+                          { step: 3, icon: <Film className="w-3 h-3" />, status: "GENERATING_VIDEO" },
+                          { step: 4, icon: <Zap className="w-3 h-3" />, status: "APPLYING_LIPSYNC" },
+                        ].map(({ step, icon, status }) => {
+                          const currentStep = isGenerating && progress ? progress.step :
+                            scene.status === "GENERATING_AUDIO" ? 1 :
+                            scene.status === "GENERATING_IMAGE" ? 2 :
+                            scene.status === "GENERATING_VIDEO" ? 3 :
+                            scene.status === "APPLYING_LIPSYNC" ? 4 : 0;
+                          const isCompleted = currentStep > step;
+                          const isCurrent = currentStep === step;
+                          return (
+                            <div
+                              key={step}
+                              className={`p-1 rounded transition-colors ${
+                                isCompleted
+                                  ? "text-green-400"
+                                  : isCurrent
+                                  ? "text-blue-400 animate-pulse"
+                                  : "text-gray-600"
+                              }`}
+                            >
+                              {icon}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -691,29 +827,290 @@ export default function ProjectPage({
         </div>
       )}
 
-      {/* Video Preview Modal */}
-      {selectedScene && selectedScene.finalVideoUrl && (
+      {/* Scene Detail Modal */}
+      {showSceneDetail && selectedScene && (
         <div
           className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
-          onClick={() => setSelectedScene(null)}
+          onClick={() => {
+            setShowSceneDetail(false);
+            setSelectedScene(null);
+          }}
         >
           <div
-            className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden max-w-4xl w-full"
+            className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden max-w-4xl w-full max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <video
-              src={selectedScene.finalVideoUrl}
-              controls
-              autoPlay
-              className="w-full"
-            />
-            <div className="p-4">
-              <h3 className="font-medium text-gray-200">{selectedScene.name}</h3>
+            {/* Modal Header */}
+            <div className="sticky top-0 bg-gray-900 border-b border-gray-800 p-4 flex items-center justify-between z-10">
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-semibold text-gray-100">{selectedScene.name}</h2>
+                <span className={`flex items-center gap-1 text-sm px-2 py-0.5 rounded-full ${
+                  statusConfig(selectedScene.status).color
+                } bg-gray-800`}>
+                  {statusConfig(selectedScene.status).icon}
+                  {statusConfig(selectedScene.status).label}
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  setShowSceneDetail(false);
+                  setSelectedScene(null);
+                }}
+                className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+
+            {/* Video Preview */}
+            {selectedScene.finalVideoUrl && (
+              <div className="bg-black">
+                <video
+                  src={selectedScene.finalVideoUrl}
+                  controls
+                  className="w-full max-h-[400px]"
+                  poster={selectedScene.thumbnailUrl || undefined}
+                />
+              </div>
+            )}
+
+            <div className="p-6 space-y-6">
+              {/* Dialogue / Script */}
               {selectedScene.dialogue && (
-                <p className="text-sm text-gray-500 mt-1">
-                  {selectedScene.dialogue}
-                </p>
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <FileText className="w-4 h-4 text-gray-500" />
+                    <h3 className="text-sm font-medium text-gray-400">Dialogue / Script</h3>
+                  </div>
+                  <p className="text-gray-200 bg-gray-800 rounded-lg p-3 whitespace-pre-wrap">
+                    {selectedScene.dialogue}
+                  </p>
+                </div>
               )}
+
+              {/* Scene Settings Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {selectedScene.environment && (
+                  <div className="bg-gray-800/50 rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Sun className="w-4 h-4 text-yellow-500" />
+                      <span className="text-xs text-gray-500">Environment</span>
+                    </div>
+                    <p className="text-sm text-gray-300">{selectedScene.environment}</p>
+                  </div>
+                )}
+                {selectedScene.wardrobe && (
+                  <div className="bg-gray-800/50 rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Shirt className="w-4 h-4 text-blue-500" />
+                      <span className="text-xs text-gray-500">Wardrobe</span>
+                    </div>
+                    <p className="text-sm text-gray-300">{selectedScene.wardrobe}</p>
+                  </div>
+                )}
+                {selectedScene.movement && (
+                  <div className="bg-gray-800/50 rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Move className="w-4 h-4 text-green-500" />
+                      <span className="text-xs text-gray-500">Movement</span>
+                    </div>
+                    <p className="text-sm text-gray-300">{selectedScene.movement}</p>
+                  </div>
+                )}
+                {selectedScene.camera && (
+                  <div className="bg-gray-800/50 rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Camera className="w-4 h-4 text-purple-500" />
+                      <span className="text-xs text-gray-500">Camera</span>
+                    </div>
+                    <p className="text-sm text-gray-300">{selectedScene.camera}</p>
+                  </div>
+                )}
+                <div className="bg-gray-800/50 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Clock className="w-4 h-4 text-orange-500" />
+                    <span className="text-xs text-gray-500">Target Duration</span>
+                  </div>
+                  <p className="text-sm text-gray-300">{selectedScene.targetDuration}s</p>
+                </div>
+                <div className="bg-gray-800/50 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Sun className="w-4 h-4 text-amber-500" />
+                    <span className="text-xs text-gray-500">Mood/Lighting</span>
+                  </div>
+                  <p className="text-sm text-gray-300">{selectedScene.moodLighting}</p>
+                </div>
+              </div>
+
+              {/* Headshot Used */}
+              {selectedScene.headshot && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <User className="w-4 h-4 text-gray-500" />
+                    <h3 className="text-sm font-medium text-gray-400">Headshot Used</h3>
+                  </div>
+                  <div className="flex items-center gap-3 bg-gray-800/50 rounded-lg p-3">
+                    {selectedScene.headshot.r2Url && (
+                      <img
+                        src={selectedScene.headshot.r2Url}
+                        alt={selectedScene.headshot.name}
+                        className="w-16 h-16 rounded-lg object-cover"
+                      />
+                    )}
+                    <span className="text-sm text-gray-300">{selectedScene.headshot.name}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Generated Outputs */}
+              {(selectedScene.audioUrl || selectedScene.imageUrl || selectedScene.rawVideoUrl || selectedScene.lipsyncVideoUrl) && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Settings className="w-4 h-4 text-gray-500" />
+                    <h3 className="text-sm font-medium text-gray-400">Generated Outputs</h3>
+                  </div>
+                  <div className="space-y-2">
+                    {selectedScene.audioUrl && (
+                      <div className="flex items-center justify-between bg-gray-800/50 rounded-lg p-3">
+                        <div className="flex items-center gap-3">
+                          <Mic className="w-4 h-4 text-blue-400" />
+                          <div>
+                            <p className="text-sm text-gray-300">Audio</p>
+                            <p className="text-xs text-gray-500">
+                              {selectedScene.audioModel || "Unknown model"}
+                              {selectedScene.audioDuration && ` • ${selectedScene.audioDuration}s`}
+                            </p>
+                          </div>
+                        </div>
+                        <a
+                          href={selectedScene.audioUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="w-4 h-4 text-gray-400" />
+                        </a>
+                      </div>
+                    )}
+                    {selectedScene.imageUrl && (
+                      <div className="flex items-center justify-between bg-gray-800/50 rounded-lg p-3">
+                        <div className="flex items-center gap-3">
+                          <ImageIcon className="w-4 h-4 text-green-400" />
+                          <div>
+                            <p className="text-sm text-gray-300">Image</p>
+                            <p className="text-xs text-gray-500">{selectedScene.imageModel || "Unknown model"}</p>
+                          </div>
+                        </div>
+                        <a
+                          href={selectedScene.imageUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="w-4 h-4 text-gray-400" />
+                        </a>
+                      </div>
+                    )}
+                    {selectedScene.rawVideoUrl && (
+                      <div className="flex items-center justify-between bg-gray-800/50 rounded-lg p-3">
+                        <div className="flex items-center gap-3">
+                          <Film className="w-4 h-4 text-purple-400" />
+                          <div>
+                            <p className="text-sm text-gray-300">Raw Video (pre-lipsync)</p>
+                            <p className="text-xs text-gray-500">
+                              {selectedScene.videoModel || "Unknown model"}
+                              {selectedScene.videoMode && ` • ${selectedScene.videoMode} mode`}
+                            </p>
+                          </div>
+                        </div>
+                        <a
+                          href={selectedScene.rawVideoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="w-4 h-4 text-gray-400" />
+                        </a>
+                      </div>
+                    )}
+                    {selectedScene.lipsyncVideoUrl && (
+                      <div className="flex items-center justify-between bg-gray-800/50 rounded-lg p-3">
+                        <div className="flex items-center gap-3">
+                          <Zap className="w-4 h-4 text-yellow-400" />
+                          <div>
+                            <p className="text-sm text-gray-300">Lip-synced Video</p>
+                            <p className="text-xs text-gray-500">{selectedScene.lipsyncModel || "Unknown model"}</p>
+                          </div>
+                        </div>
+                        <a
+                          href={selectedScene.lipsyncVideoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="w-4 h-4 text-gray-400" />
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Error Information */}
+              {selectedScene.failureReason && (
+                <div className="bg-red-900/20 border border-red-800 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <XCircle className="w-4 h-4 text-red-400" />
+                    <h3 className="text-sm font-medium text-red-400">Error Details</h3>
+                  </div>
+                  <p className="text-sm text-red-300">{selectedScene.failureReason}</p>
+                  {selectedScene.retryCount > 0 && (
+                    <p className="text-xs text-red-400 mt-2">Retry attempts: {selectedScene.retryCount}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Timestamps */}
+              <div className="flex items-center gap-4 text-xs text-gray-500 pt-4 border-t border-gray-800">
+                <span>Created: {new Date(selectedScene.createdAt).toLocaleString()}</span>
+                {selectedScene.updatedAt && (
+                  <span>Updated: {new Date(selectedScene.updatedAt).toLocaleString()}</span>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4">
+                {(selectedScene.status === "DRAFT" || selectedScene.status === "FAILED") && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowSceneDetail(false);
+                      generateScene(selectedScene.id);
+                    }}
+                    disabled={generating !== null}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:opacity-50"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    {selectedScene.status === "FAILED" ? "Retry Generation" : "Generate"}
+                  </button>
+                )}
+                {selectedScene.finalVideoUrl && (
+                  <a
+                    href={selectedScene.finalVideoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gray-800 text-gray-200 rounded-lg hover:bg-gray-700 transition-colors"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Download className="w-4 h-4" />
+                    Download Video
+                  </a>
+                )}
+              </div>
             </div>
           </div>
         </div>
