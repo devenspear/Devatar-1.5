@@ -63,6 +63,7 @@ export async function GET(request: Request) {
           testResult: directResult,
         },
         moduleUrl: {
+          full: moduleSignedUrl,
           preview: moduleSignedUrl.substring(0, 120) + "...",
           testResult: moduleResult,
         },
