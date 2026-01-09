@@ -175,6 +175,46 @@ export default function ProjectPage({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [sceneToDelete, setSceneToDelete] = useState<Scene | null>(null);
+  const [recovering, setRecovering] = useState<string | null>(null);
+
+  // Check if a scene is stuck (in APPLYING_LIPSYNC for more than 3 minutes)
+  const isSceneStuck = (scene: Scene) => {
+    if (scene.status !== "APPLYING_LIPSYNC") return false;
+    if (!scene.lastAttemptAt) return false;
+    const lastAttempt = new Date(scene.lastAttemptAt).getTime();
+    const now = Date.now();
+    return now - lastAttempt > 3 * 60 * 1000; // 3 minutes
+  };
+
+  // Recover a stuck scene
+  async function recoverScene(sceneId: string) {
+    try {
+      setRecovering(sceneId);
+      setErrorMessage(null);
+
+      const res = await fetch(`/api/scenes/${sceneId}/check-lipsync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const data = await res.json();
+
+      if (data.recovered) {
+        setErrorMessage(null);
+        fetchProject();
+      } else if (data.syncLabsStatus === "processing" || data.syncLabsStatus === "pending") {
+        setErrorMessage(`Lip-sync is still ${data.syncLabsStatus}. Please wait a few more minutes.`);
+      } else if (data.error) {
+        setErrorMessage(data.error);
+      } else {
+        setErrorMessage(data.message || "Recovery attempted but scene may still be processing.");
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Recovery failed");
+    } finally {
+      setRecovering(null);
+    }
+  }
 
   useEffect(() => {
     fetchProject();
@@ -737,6 +777,29 @@ export default function ProjectPage({
                           );
                         })}
                       </div>
+                      {/* Recover Button for Stuck Scenes */}
+                      {isSceneStuck(scene) && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            recoverScene(scene.id);
+                          }}
+                          disabled={recovering === scene.id}
+                          className="mt-2 w-full px-3 py-1.5 bg-yellow-600/20 text-yellow-400 border border-yellow-600/30 rounded-lg text-xs hover:bg-yellow-600/30 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                          {recovering === scene.id ? (
+                            <>
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              Recovering...
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw className="w-3 h-3" />
+                              Recover Stuck Scene
+                            </>
+                          )}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
