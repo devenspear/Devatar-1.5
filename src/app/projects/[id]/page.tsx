@@ -268,17 +268,25 @@ export default function ProjectPage({
     setErrorMessage(null);
 
     try {
-      // Trigger Inngest-based generation (runs in background)
+      // Try Inngest-based generation first
       const res = await fetch(`/api/scenes/${sceneId}/generate`, {
         method: "POST",
       });
 
+      const data = await res.json();
+
+      // If Inngest isn't configured (503), fall back to direct SSE generation
+      if (res.status === 503 || data.fallbackUrl) {
+        console.log("Inngest not available, using direct generation...");
+        await generateSceneDirect(sceneId);
+        return;
+      }
+
       if (!res.ok) {
-        const data = await res.json();
         throw new Error(data.error || "Failed to start generation");
       }
 
-      // Start polling for status updates
+      // Inngest succeeded - start polling for status updates
       const pollInterval = setInterval(async () => {
         try {
           const statusRes = await fetch(`/api/scenes/${sceneId}/status`);
@@ -338,6 +346,67 @@ export default function ProjectPage({
       setErrorMessage(error instanceof Error ? error.message : "Generation failed");
       setGenerating(null);
       setGeneratingSceneName(null);
+      fetchProject();
+    }
+  }
+
+  // Fallback: Direct SSE-based generation (used when Inngest isn't configured)
+  async function generateSceneDirect(sceneId: string) {
+    try {
+      const res = await fetch(`/api/scenes/${sceneId}/generate-direct`, {
+        method: "POST",
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to start generation");
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) {
+        throw new Error("No response stream");
+      }
+
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const text = decoder.decode(value);
+        const lines = text.split("\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              setProgress(data);
+
+              if (data.error) {
+                setErrorMessage(data.error);
+                setGenerating(null);
+                setGeneratingSceneName(null);
+              }
+
+              if (data.step === 5 && data.status === "completed") {
+                setTimeout(() => {
+                  setGenerating(null);
+                  setGeneratingSceneName(null);
+                  setProgress(null);
+                }, 2000);
+                fetchProject();
+              }
+            } catch {
+              // Ignore parse errors
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error in direct generation:", error);
+      setErrorMessage(error instanceof Error ? error.message : "Generation failed");
+      setGenerating(null);
+      setGeneratingSceneName(null);
+    } finally {
       fetchProject();
     }
   }

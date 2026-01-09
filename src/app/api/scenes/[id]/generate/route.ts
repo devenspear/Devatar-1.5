@@ -42,21 +42,39 @@ export async function POST(
       },
     });
 
-    // Trigger Inngest function
-    await inngest.send({
-      name: "scene/generate",
-      data: { sceneId: id },
-    });
+    // Try to trigger Inngest function
+    try {
+      await inngest.send({
+        name: "scene/generate",
+        data: { sceneId: id },
+      });
 
-    return NextResponse.json({
-      success: true,
-      message: "Generation started",
-      sceneId: id,
-    });
+      return NextResponse.json({
+        success: true,
+        message: "Generation started via Inngest",
+        sceneId: id,
+        method: "inngest",
+      });
+    } catch (inngestError) {
+      // Inngest failed - likely not configured
+      console.error("Inngest send failed:", inngestError);
+
+      // Return info about Inngest setup needed
+      const errorMessage = inngestError instanceof Error ? inngestError.message : "Unknown Inngest error";
+      return NextResponse.json(
+        {
+          error: "Inngest not configured. Please set INNGEST_EVENT_KEY in Vercel environment variables, or use /api/scenes/[id]/generate-direct for SSE-based generation.",
+          details: errorMessage,
+          fallbackUrl: `/api/scenes/${id}/generate-direct`,
+        },
+        { status: 503 }
+      );
+    }
   } catch (error) {
     console.error("Error triggering generation:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
-      { error: "Failed to trigger generation" },
+      { error: "Failed to trigger generation", details: errorMessage },
       { status: 500 }
     );
   }
