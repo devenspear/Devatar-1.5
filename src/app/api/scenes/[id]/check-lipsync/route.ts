@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
-import { checkLipsyncStatus } from "@/lib/ai/synclabs";
 import { uploadToR2, generateSceneKey } from "@/lib/storage/r2";
+
+const SYNCLABS_API_URL = "https://api.sync.so/v2";
 
 /**
  * POST /api/scenes/[id]/check-lipsync
@@ -53,16 +54,34 @@ export async function POST(
       );
     }
 
-    // Check Sync Labs job status
+    // Check Sync Labs job status directly to get raw response
     console.log(`Checking Sync Labs job: ${syncLabsJobId}`);
-    const status = await checkLipsyncStatus(syncLabsJobId);
+    const response = await fetch(`${SYNCLABS_API_URL}/generate/${syncLabsJobId}`, {
+      headers: {
+        "x-api-key": process.env.SYNCLABS_API_KEY!,
+      },
+    });
 
-    console.log("Sync Labs status:", status);
+    if (!response.ok) {
+      const error = await response.text();
+      return NextResponse.json(
+        { error: `Sync Labs API error: ${response.status} - ${error}` },
+        { status: 500 }
+      );
+    }
 
-    if (status.status === "completed" && status.videoUrl) {
+    const data = await response.json();
+    console.log("Sync Labs raw response:", JSON.stringify(data, null, 2));
+
+    // Try multiple possible output URL fields
+    const videoUrl = data.output_url || data.outputUrl || data.video_url || data.videoUrl || data.result?.url || data.output?.url;
+    const jobStatus = data.status?.toLowerCase();
+    const jobError = data.error || data.message;
+
+    if ((jobStatus === "completed" || jobStatus === "complete") && videoUrl) {
       // Job completed - recover the video
-      console.log("Job completed! Downloading video...");
-      const videoResponse = await fetch(status.videoUrl);
+      console.log("Job completed! Downloading video from:", videoUrl);
+      const videoResponse = await fetch(videoUrl);
       if (!videoResponse.ok) {
         return NextResponse.json(
           { error: `Failed to download video: ${videoResponse.status}` },
@@ -104,18 +123,18 @@ export async function POST(
         success: true,
         recovered: true,
         message: "Scene recovered successfully",
-        syncLabsStatus: status.status,
+        syncLabsStatus: jobStatus,
         finalVideoUrl: upload.url,
       });
     }
 
-    if (status.status === "failed") {
+    if (jobStatus === "failed" || jobStatus === "error") {
       // Job failed - update scene status
       await prisma.scene.update({
         where: { id },
         data: {
           status: "FAILED",
-          failureReason: status.error || "Lip-sync job failed",
+          failureReason: jobError || "Lip-sync job failed",
         },
       });
 
@@ -125,15 +144,28 @@ export async function POST(
           projectId: scene.projectId,
           step: "LIPSYNC_APPLICATION",
           level: "ERROR",
-          message: `Lip-sync failed: ${status.error}`,
+          message: `Lip-sync failed: ${jobError}`,
           provider: "SyncLabs",
         },
       });
 
       return NextResponse.json({
         success: false,
-        syncLabsStatus: status.status,
-        error: status.error,
+        syncLabsStatus: jobStatus,
+        error: jobError,
+      });
+    }
+
+    // Job completed but no video URL found - return debug info
+    if (jobStatus === "completed" || jobStatus === "complete") {
+      return NextResponse.json({
+        success: false,
+        syncLabsStatus: jobStatus,
+        message: "Job completed but no video URL found",
+        debug: {
+          availableFields: Object.keys(data),
+          rawData: data,
+        },
       });
     }
 
@@ -141,9 +173,9 @@ export async function POST(
     return NextResponse.json({
       success: true,
       recovered: false,
-      syncLabsStatus: status.status,
+      syncLabsStatus: jobStatus,
       jobId: syncLabsJobId,
-      message: `Lip-sync job is still ${status.status}. Try again in a few minutes.`,
+      message: `Lip-sync job is still ${jobStatus}. Try again in a few minutes.`,
     });
   } catch (error) {
     console.error("Error checking lip-sync:", error);
