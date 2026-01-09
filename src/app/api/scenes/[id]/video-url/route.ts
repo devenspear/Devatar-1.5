@@ -87,6 +87,10 @@ export async function GET(
       url: signedUrl,
       type,
       expiresIn: 3600,
+      debug: {
+        storedUrl: storedUrl.substring(0, 80) + "...",
+        extractedKey: key,
+      },
     });
   } catch (error) {
     console.error("Error generating video URL:", error);
