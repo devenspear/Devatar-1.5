@@ -5,6 +5,7 @@ import { getSignedDownloadUrl } from "@/lib/storage/r2";
 /**
  * GET /api/scenes/[id]/video-url
  * Returns a fresh signed URL for the scene's final video
+ * Updated: 2026-01-09 - Force redeployment for lazy R2 client initialization
  */
 export async function GET(
   request: Request,
