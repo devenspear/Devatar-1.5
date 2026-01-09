@@ -265,62 +265,76 @@ export default function ProjectPage({
     setErrorMessage(null);
 
     try {
-      // Use the direct generation endpoint with SSE streaming
-      const res = await fetch(`/api/scenes/${sceneId}/generate-direct`, {
+      // Trigger Inngest-based generation (runs in background)
+      const res = await fetch(`/api/scenes/${sceneId}/generate`, {
         method: "POST",
       });
 
       if (!res.ok) {
-        throw new Error("Failed to start generation");
+        const data = await res.json();
+        throw new Error(data.error || "Failed to start generation");
       }
 
-      const reader = res.body?.getReader();
-      if (!reader) {
-        throw new Error("No response stream");
-      }
+      // Start polling for status updates
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`/api/scenes/${sceneId}/status`);
+          if (!statusRes.ok) return;
 
-      const decoder = new TextDecoder();
+          const statusData = await statusRes.json();
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+          // Map scene status to step number
+          const statusToStep: Record<string, number> = {
+            "DRAFT": 0,
+            "GENERATING_AUDIO": 1,
+            "GENERATING_IMAGE": 2,
+            "GENERATING_VIDEO": 3,
+            "APPLYING_LIPSYNC": 4,
+            "COMPLETED": 5,
+            "FAILED": -1,
+          };
 
-        const text = decoder.decode(value);
-        const lines = text.split("\n");
+          const step = statusToStep[statusData.status] || 0;
+          const latestLog = statusData.logs?.[0];
 
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              setProgress(data);
+          setProgress({
+            step: step,
+            status: statusData.status,
+            message: latestLog?.message || `Processing: ${statusData.status}`,
+            audioUrl: statusData.audioUrl,
+            imageUrl: statusData.imageUrl,
+            videoUrl: statusData.rawVideoUrl,
+            finalVideoUrl: statusData.finalVideoUrl,
+          });
 
-              if (data.error) {
-                setErrorMessage(data.error);
-                setGenerating(null);
-                setGeneratingSceneName(null);
-              }
-
-              if (data.step === 5 && data.status === "completed") {
-                // Generation complete - keep progress visible briefly before clearing
-                setTimeout(() => {
-                  setGenerating(null);
-                  setGeneratingSceneName(null);
-                  setProgress(null);
-                }, 2000);
-                fetchProject();
-              }
-            } catch {
-              // Ignore parse errors
-            }
+          // Check for completion or failure
+          if (statusData.status === "COMPLETED") {
+            clearInterval(pollInterval);
+            setTimeout(() => {
+              setGenerating(null);
+              setGeneratingSceneName(null);
+              setProgress(null);
+            }, 2000);
+            fetchProject();
+          } else if (statusData.status === "FAILED") {
+            clearInterval(pollInterval);
+            setErrorMessage(statusData.failureReason || "Generation failed");
+            setGenerating(null);
+            setGeneratingSceneName(null);
+            fetchProject();
           }
+        } catch (pollError) {
+          console.error("Error polling status:", pollError);
         }
-      }
+      }, 3000); // Poll every 3 seconds
+
+      // Store interval ID to clean up on unmount or cancel
+      return () => clearInterval(pollInterval);
     } catch (error) {
       console.error("Error generating scene:", error);
       setErrorMessage(error instanceof Error ? error.message : "Generation failed");
       setGenerating(null);
       setGeneratingSceneName(null);
-    } finally {
       fetchProject();
     }
   }
