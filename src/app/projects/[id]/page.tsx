@@ -26,6 +26,7 @@ import {
   Move,
   Sun,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 
 interface Asset {
@@ -172,6 +173,8 @@ export default function ProjectPage({
   const [generatingSceneName, setGeneratingSceneName] = useState<string | null>(null);
   const [progress, setProgress] = useState<GenerationProgress | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [sceneToDelete, setSceneToDelete] = useState<Scene | null>(null);
 
   useEffect(() => {
     fetchProject();
@@ -336,6 +339,36 @@ export default function ProjectPage({
       setGenerating(null);
       setGeneratingSceneName(null);
       fetchProject();
+    }
+  }
+
+  async function deleteScene(sceneId: string) {
+    setDeleting(sceneId);
+    try {
+      const res = await fetch(`/api/scenes/${sceneId}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to delete scene");
+      }
+
+      // Close detail modal if open
+      if (selectedScene?.id === sceneId) {
+        setShowSceneDetail(false);
+        setSelectedScene(null);
+      }
+
+      // Close delete confirmation
+      setSceneToDelete(null);
+
+      // Refresh project data
+      fetchProject();
+    } catch (error) {
+      console.error("Error deleting scene:", error);
+      setErrorMessage("Failed to delete scene");
+    } finally {
+      setDeleting(null);
     }
   }
 
@@ -518,11 +551,23 @@ export default function ProjectPage({
                 </div>
                 <div className="p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-medium text-gray-200">{scene.name}</h3>
-                    <span className={`flex items-center gap-1 text-sm ${status.color}`}>
-                      {status.icon}
-                      {status.label}
-                    </span>
+                    <h3 className="font-medium text-gray-200 truncate flex-1">{scene.name}</h3>
+                    <div className="flex items-center gap-2">
+                      <span className={`flex items-center gap-1 text-sm ${status.color}`}>
+                        {status.icon}
+                        {status.label}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSceneToDelete(scene);
+                        }}
+                        className="p-1 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors"
+                        title="Delete scene"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                   {scene.dialogue && (
                     <p className="text-sm text-gray-500 line-clamp-2 mb-3">
@@ -1124,7 +1169,75 @@ export default function ProjectPage({
                     Download Video
                   </a>
                 )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSceneToDelete(selectedScene);
+                  }}
+                  className="flex items-center justify-center gap-2 px-4 py-2 bg-red-900/20 text-red-400 border border-red-800 rounded-lg hover:bg-red-900/40 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete
+                </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {sceneToDelete && (
+        <div
+          className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4"
+          onClick={() => setSceneToDelete(null)}
+        >
+          <div
+            className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-md"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 bg-red-900/30 rounded-full">
+                <Trash2 className="w-6 h-6 text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-100">Delete Scene</h3>
+                <p className="text-sm text-gray-500">This action cannot be undone</p>
+              </div>
+            </div>
+
+            <p className="text-gray-300 mb-6">
+              Are you sure you want to delete <span className="font-medium text-gray-100">&quot;{sceneToDelete.name}&quot;</span>?
+              {sceneToDelete.finalVideoUrl && (
+                <span className="block mt-2 text-sm text-yellow-400">
+                  This scene has a generated video that will also be deleted.
+                </span>
+              )}
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setSceneToDelete(null)}
+                className="flex-1 px-4 py-2 bg-gray-800 text-gray-200 rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteScene(sceneToDelete.id)}
+                disabled={deleting === sceneToDelete.id}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-500 transition-colors disabled:opacity-50"
+              >
+                {deleting === sceneToDelete.id ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Delete Scene
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
