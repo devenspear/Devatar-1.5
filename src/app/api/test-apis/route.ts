@@ -3,6 +3,7 @@ import { testConnection as testElevenLabs } from "@/lib/ai/elevenlabs";
 import { testConnection as testGemini } from "@/lib/ai/gemini";
 import { testConnection as testKling } from "@/lib/ai/kling";
 import { testConnection as testSyncLabs } from "@/lib/ai/synclabs";
+import { testConnection as testFal } from "@/lib/ai/fal";
 
 export async function GET() {
   const results = {
@@ -10,16 +11,18 @@ export async function GET() {
     gemini: false,
     kling: false,
     synclabs: false,
+    fal: false,
     r2: false,
   };
 
   // Test all APIs in parallel
-  const [elevenLabsResult, geminiResult, klingResult, syncLabsResult] =
+  const [elevenLabsResult, geminiResult, klingResult, syncLabsResult, falResult] =
     await Promise.allSettled([
       testElevenLabs(),
       testGemini(),
       testKling(),
       testSyncLabs(),
+      testFal(),
     ]);
 
   results.elevenlabs =
@@ -30,6 +33,8 @@ export async function GET() {
     klingResult.status === "fulfilled" && klingResult.value;
   results.synclabs =
     syncLabsResult.status === "fulfilled" && syncLabsResult.value;
+  results.fal =
+    falResult.status === "fulfilled" && falResult.value;
 
   // Test R2 by checking if env vars are set
   results.r2 = !!(

@@ -223,34 +223,17 @@ export async function generateIdentityAnchor(
 /**
  * Test Fal.ai API connection
  *
- * Performs a lightweight validation of API credentials without
- * actually generating an image (checks quota/billing status).
+ * Checks if the FAL_KEY environment variable is configured.
+ * Note: Fal.ai doesn't provide a free status endpoint, so we just
+ * verify the key is set. Actual API validation happens on first use.
  *
- * @returns true if connection is valid, false otherwise
+ * @returns true if FAL_KEY is configured, false otherwise
  */
 export async function testConnection(): Promise<boolean> {
-  try {
-    if (!process.env.FAL_KEY) {
-      console.warn("[Fal.ai] FAL_KEY not configured");
-      return false;
-    }
-
-    // Use a simple generation to test (will be fast with minimal steps)
-    // In production, we'd use a billing/status endpoint if available
-    const result = await fal.subscribe(FAL_FLUX_LORA_MODEL, {
-      input: {
-        prompt: "test connection",
-        image_size: "square",
-        num_inference_steps: 1,
-        num_images: 1,
-      },
-    });
-
-    return !!result.data?.images?.length;
-  } catch (error) {
-    console.error("[Fal.ai] Connection test failed:", error);
-    return false;
-  }
+  // Fal.ai doesn't have a free status/ping endpoint like ElevenLabs (/user).
+  // Making a real API call would cost money, so we just check if the key is set.
+  // The key will be validated on first actual generation.
+  return !!process.env.FAL_KEY;
 }
 
 /**

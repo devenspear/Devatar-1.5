@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { CheckCircle, XCircle, Loader2, Info, ExternalLink, Mic, Image as ImageIcon, Film, Zap, HardDrive } from "lucide-react";
+import { CheckCircle, XCircle, Loader2, Info, ExternalLink, Mic, Image as ImageIcon, Film, Zap, HardDrive, Sparkles } from "lucide-react";
 
 interface APIStatus {
   elevenlabs: boolean | null;
   gemini: boolean | null;
   kling: boolean | null;
   synclabs: boolean | null;
+  fal: boolean | null;
   r2: boolean | null;
 }
 
@@ -59,6 +60,16 @@ const MODEL_INFO = {
     ],
     docsUrl: "https://docs.synclabs.so",
   },
+  fal: {
+    provider: "Fal.ai",
+    purpose: "Digital Twin Images (LoRA)",
+    icon: Sparkles,
+    models: [
+      { id: "fal-ai/flux-lora", name: "Flux LoRA", description: "Identity-locked image generation with custom LoRA", default: true },
+      { id: "fal-ai/flux/dev", name: "Flux Dev", description: "Standard Flux Dev without LoRA" },
+    ],
+    docsUrl: "https://fal.ai/models/fal-ai/flux-lora",
+  },
 };
 
 export default function SettingsPage() {
@@ -70,12 +81,14 @@ export default function SettingsPage() {
     kling_mode: "pro",
     kling_duration: 5,
     synclabs: "lipsync-2",
+    fal: "fal-ai/flux-lora",
   });
   const [apiStatus, setApiStatus] = useState<APIStatus>({
     elevenlabs: null,
     gemini: null,
     kling: null,
     synclabs: null,
+    fal: null,
     r2: null,
   });
   const [testing, setTesting] = useState(false);
@@ -111,6 +124,7 @@ export default function SettingsPage() {
       gemini: null,
       kling: null,
       synclabs: null,
+      fal: null,
       r2: null,
     });
 
@@ -244,6 +258,14 @@ export default function SettingsPage() {
 
             <div className="flex items-center justify-between py-2">
               <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-gray-500" />
+                <span className="text-sm text-gray-300">Fal.ai</span>
+              </div>
+              <StatusIcon status={apiStatus.fal} />
+            </div>
+
+            <div className="flex items-center justify-between py-2">
+              <div className="flex items-center gap-2">
                 <HardDrive className="w-4 h-4 text-gray-500" />
                 <span className="text-sm text-gray-300">Cloudflare R2</span>
               </div>
@@ -275,6 +297,7 @@ R2_BUCKET_NAME=devatar
 ELEVENLABS_API_KEY=
 PIAPI_FLUX_KEY=     # Flux images & Kling video
 SYNCLABS_API_KEY=
+FAL_KEY=            # Digital Twin LoRA images
 
 # Background Jobs
 INNGEST_EVENT_KEY=
@@ -290,7 +313,7 @@ INNGEST_SIGNING_KEY=`}
           Configure which AI models to use for each generation step. These settings will be tracked with each scene.
         </p>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-5 gap-6">
           {/* ElevenLabs Models */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
@@ -540,6 +563,65 @@ INNGEST_SIGNING_KEY=`}
                   <div
                     className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${
                       selectedModels.synclabs === model.id
+                        ? "border-blue-500 bg-blue-500"
+                        : "border-gray-600"
+                    }`}
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Fal.ai Models */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-blue-400" />
+                <h3 className="font-medium text-gray-200">{MODEL_INFO.fal.provider}</h3>
+              </div>
+              <a
+                href={MODEL_INFO.fal.docsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-gray-500 hover:text-gray-400 flex items-center gap-1"
+              >
+                Docs <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+            <div className="space-y-2">
+              {MODEL_INFO.fal.models.map((model) => (
+                <label
+                  key={model.id}
+                  className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                    selectedModels.fal === model.id
+                      ? "border-blue-500/50 bg-blue-500/10"
+                      : "border-gray-700 hover:border-gray-600 bg-gray-800/50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="fal"
+                    value={model.id}
+                    checked={selectedModels.fal === model.id}
+                    onChange={(e) =>
+                      setSelectedModels({ ...selectedModels, fal: e.target.value })
+                    }
+                    className="sr-only"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-200">{model.name}</span>
+                      {model.default && (
+                        <span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded">
+                          Default
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 truncate">{model.description}</p>
+                  </div>
+                  <div
+                    className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${
+                      selectedModels.fal === model.id
                         ? "border-blue-500 bg-blue-500"
                         : "border-gray-600"
                     }`}
