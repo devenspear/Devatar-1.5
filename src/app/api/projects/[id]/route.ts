@@ -28,8 +28,10 @@ export async function GET(
     return NextResponse.json(project);
   } catch (error) {
     console.error("Error fetching project:", error);
+    // Return more detailed error for debugging
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
-      { error: "Failed to fetch project" },
+      { error: "Failed to fetch project", details: errorMessage },
       { status: 500 }
     );
   }
