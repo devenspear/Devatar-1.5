@@ -3,7 +3,7 @@ import prisma from "@/lib/db";
 import { generateSpeech } from "@/lib/ai/elevenlabs";
 import { generateFluxImage } from "@/lib/ai/piapi-flux";
 import { submitVideoGeneration, checkVideoStatus } from "@/lib/ai/kling";
-import { submitLipsync, checkLipsyncStatus } from "@/lib/ai/synclabs";
+import { submitLipsync, checkLipsyncStatus, validateAudioDuration, SYNCLABS_PLAN, SYNCLABS_MAX_DURATION } from "@/lib/ai/synclabs";
 import { uploadToR2, generateSceneKey, getSignedDownloadUrl } from "@/lib/storage/r2";
 import { DEVEN_VOICE_ID, DEVEN_VOICE_SETTINGS } from "@/lib/avatar-identity";
 
@@ -69,6 +69,30 @@ export async function POST(
         }
 
         const projectId = scene.projectId;
+        const dialogue = scene.dialogue || "Hello, this is a test.";
+
+        // PRE-VALIDATION: Check if dialogue would exceed Sync Labs duration limit
+        const durationValidation = validateAudioDuration(dialogue.length);
+        if (!durationValidation.valid) {
+          send({
+            error: durationValidation.message,
+            details: {
+              estimatedSeconds: Math.round(durationValidation.estimatedSeconds),
+              maxSeconds: durationValidation.maxSeconds,
+              characterCount: dialogue.length,
+              plan: SYNCLABS_PLAN,
+            },
+          });
+          controller.close();
+          return;
+        }
+
+        // Log estimated duration for reference
+        send({
+          step: 0,
+          status: "validated",
+          message: `Dialogue validated: ${dialogue.length} chars, ~${Math.round(durationValidation.estimatedSeconds)}s estimated (max ${SYNCLABS_MAX_DURATION}s)`,
+        });
 
         // STEP 1: Generate Audio using Deven's voice
         send({ step: 1, status: "generating_audio", message: "Generating speech with Deven's voice..." });
@@ -85,7 +109,7 @@ export async function POST(
         await createLog(id, projectId, "AUDIO_GENERATION", "INFO", `Starting audio generation with voice ${voiceId}`, "ElevenLabs");
 
         const audioResult = await generateSpeech(
-          scene.dialogue || "Hello, this is a test.",
+          dialogue,
           voiceId,
           DEVEN_VOICE_SETTINGS
         );
