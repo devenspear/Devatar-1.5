@@ -5,7 +5,8 @@ import { getSignedDownloadUrl } from "@/lib/storage/r2";
 /**
  * GET /api/scenes/[id]/video-url
  * Returns a fresh signed URL for the scene's final video
- * Updated: 2026-01-09 - Force redeployment for lazy R2 client initialization
+ * Note: Signed URLs may not work for direct browser access due to R2 restrictions.
+ * Use /api/scenes/[id]/video for streaming access instead.
  */
 export async function GET(
   request: Request,
@@ -88,10 +89,6 @@ export async function GET(
       url: signedUrl,
       type,
       expiresIn: 3600,
-      debug: {
-        storedUrl: storedUrl.substring(0, 80) + "...",
-        extractedKey: key,
-      },
     });
   } catch (error) {
     console.error("Error generating video URL:", error);
