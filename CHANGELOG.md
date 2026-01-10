@@ -2,6 +2,46 @@
 
 All notable changes to Devatar are documented in this file.
 
+## [1.5.14] - 2026-01-10
+
+### Fixed
+
+#### BigInt Serialization Bug
+- Scene detail API was failing with "Do not know how to serialize a BigInt"
+- Root cause: `Asset.sizeBytes` is BigInt, `JSON.stringify()` can't serialize it
+- Scenes with headshots (which include sizeBytes) would return 500 error
+- Fix: Added JSON serialization with BigInt → string conversion in `/api/scenes/[id]`
+
+---
+
+## [1.5.13] - 2026-01-10
+
+### Added
+
+#### Dedicated Scenes Page
+- **Scenes Menu Item** - Added "Scenes" to sidebar navigation between Projects and Assets
+- **Scenes List Page** (`/scenes`)
+  - Shows ALL scenes across all projects
+  - Grouped by project with collapsible sections
+  - Each project section shows scene count
+  - Scene cards with thumbnail, name, status, dialogue preview
+- **Scene Detail Page** (`/scenes/[id]`)
+  - Full-page view (no longer modal-based)
+  - Breadcrumb: Scenes > Project Name > Scene Name
+  - Video preview for completed scenes
+  - Editable scene properties (dialogue, environment, wardrobe, etc.)
+  - Generation controls with real-time progress tracking
+  - Generated outputs section (audio, image, video URLs)
+  - Delete functionality with confirmation modal
+- **New API Endpoint** (`/api/scenes/all`)
+  - Fetches all scenes grouped by project
+
+### Changed
+- Simplified navigation: Sidebar → Scenes → Scene Detail (fewer steps than before)
+- Scene API now includes headshot relation in response
+
+---
+
 ## [1.5.11] - 2026-01-10
 
 ### Added
