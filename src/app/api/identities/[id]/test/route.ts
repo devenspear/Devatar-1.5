@@ -59,18 +59,24 @@ export async function POST(request: Request, { params }: RouteParams) {
       message: "",
     };
 
+    // Determine which LoRA URL to use: identity-specific OR system default
+    const effectiveLoraUrl = identity.loraUrl || process.env.DEVEN_LORA_URL || null;
+    const usingDefaultLora = !identity.loraUrl && !!process.env.DEVEN_LORA_URL;
+
     // Test 1: Validate LoRA URL
-    if (identity.loraUrl) {
-      console.log(`[API] Testing LoRA URL for identity: ${identity.name}`);
-      results.loraValidation = await validateLoraUrl(identity.loraUrl);
+    if (effectiveLoraUrl) {
+      console.log(`[API] Testing LoRA URL for identity: ${identity.name} (using ${usingDefaultLora ? 'system default' : 'identity-specific'} LoRA)`);
+      results.loraValidation = await validateLoraUrl(effectiveLoraUrl);
 
       if (!results.loraValidation.valid) {
         results.overallStatus = "partial";
+      } else if (usingDefaultLora) {
+        results.loraValidation.message = `Using system default LoRA (DEVEN_LORA_URL). ${results.loraValidation.message}`;
       }
     } else {
       results.loraValidation = {
         valid: false,
-        message: "No LoRA URL configured. Digital Twin mode will not work until a LoRA is uploaded.",
+        message: "No LoRA URL configured (neither on identity nor as system default). Digital Twin mode will not work until a LoRA is uploaded.",
       };
       results.overallStatus = "partial";
     }
@@ -98,8 +104,8 @@ export async function POST(request: Request, { params }: RouteParams) {
     }
 
     // Test 3: Generate a test image (if requested and LoRA is valid)
-    if (testGeneration && results.loraValidation?.valid && identity.loraUrl) {
-      console.log(`[API] Generating test image for identity: ${identity.name}`);
+    if (testGeneration && results.loraValidation?.valid && effectiveLoraUrl) {
+      console.log(`[API] Generating test image for identity: ${identity.name} (using ${usingDefaultLora ? 'system default' : 'identity-specific'} LoRA)`);
 
       try {
         // Check if FAL_KEY is configured
@@ -117,7 +123,7 @@ export async function POST(request: Request, { params }: RouteParams) {
             displayName: identity.displayName,
             description: identity.description || undefined,
             triggerWord: identity.triggerWord,
-            loraUrl: identity.loraUrl,
+            loraUrl: effectiveLoraUrl,
             loraScale: identity.loraScale,
             baseModel: identity.baseModel as "flux-dev" | "flux-schnell",
             voiceId: identity.voiceId,
@@ -141,7 +147,7 @@ export async function POST(request: Request, { params }: RouteParams) {
           const result = await generateWithLora({
             prompt: testPrompt,
             loras: [{
-              path: identity.loraUrl,
+              path: effectiveLoraUrl,
               scale: identity.loraScale,
             }],
             imageSize: "square",
@@ -170,8 +176,12 @@ export async function POST(request: Request, { params }: RouteParams) {
     const messages: string[] = [];
 
     if (results.loraValidation?.valid) {
-      messages.push("LoRA is accessible and valid");
-    } else if (identity.loraUrl) {
+      if (usingDefaultLora) {
+        messages.push("LoRA is accessible and valid (using system default)");
+      } else {
+        messages.push("LoRA is accessible and valid");
+      }
+    } else if (effectiveLoraUrl) {
       messages.push(`LoRA validation failed: ${results.loraValidation?.message}`);
     } else {
       messages.push("No LoRA configured (required for Digital Twin mode)");
@@ -192,7 +202,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     results.message = messages.join(". ");
 
     // Update overall status based on critical failures
-    if (!results.loraValidation?.valid && identity.loraUrl) {
+    if (!results.loraValidation?.valid && effectiveLoraUrl) {
       results.overallStatus = "failed";
     }
 

@@ -508,13 +508,13 @@ export default function IdentitiesPage() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {/* Generate Test Image Button */}
-                    {identity.loraUrl && (
+                    {/* Generate Test Image Button - Show if identity has LoRA OR system default is configured */}
+                    {(identity.loraUrl || systemStatus?.configuration.defaultLoraConfigured) && (
                       <button
                         onClick={() => handleTest(identity.id, true)}
                         disabled={testingId === identity.id}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 border border-purple-500/30 rounded-lg transition-colors disabled:opacity-50"
-                        title="Generate a test image to see your LoRA in action"
+                        title={identity.loraUrl ? "Generate a test image with this identity's LoRA" : "Generate a test image with the system default LoRA"}
                       >
                         {testingId === identity.id ? (
                           <>
