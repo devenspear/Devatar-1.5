@@ -92,7 +92,7 @@ export const DEVEN_IDENTITY: IdentityProfile = {
 
   // LoRA Configuration
   triggerWord: "TOK_DEVEN",
-  loraUrl: process.env.DEVEN_LORA_URL || null,
+  loraUrl: process.env.DEVEN_LORA_URL?.trim() || null, // Trim to remove any newline chars
   loraScale: 0.95,
   baseModel: "flux-dev",
 

@@ -60,7 +60,9 @@ export async function POST(request: Request, { params }: RouteParams) {
     };
 
     // Determine which LoRA URL to use: identity-specific OR system default
-    const effectiveLoraUrl = identity.loraUrl || process.env.DEVEN_LORA_URL || null;
+    // IMPORTANT: Trim to remove any newline characters (common env var bug)
+    const rawLoraUrl = identity.loraUrl || process.env.DEVEN_LORA_URL || null;
+    const effectiveLoraUrl = rawLoraUrl?.trim() || null;
     const usingDefaultLora = !identity.loraUrl && !!process.env.DEVEN_LORA_URL;
 
     // Test 1: Validate LoRA URL
