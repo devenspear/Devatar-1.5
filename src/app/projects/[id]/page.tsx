@@ -236,6 +236,23 @@ export default function ProjectPage({
     return () => clearInterval(interval);
   }, [id]);
 
+  // Handle escape key for modals
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (showCreate) setShowCreate(false);
+        if (showSceneDetail) {
+          setShowSceneDetail(false);
+          setSelectedScene(null);
+          setSignedVideoUrl(null);
+        }
+        if (sceneToDelete) setSceneToDelete(null);
+      }
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [showCreate, showSceneDetail, sceneToDelete]);
+
   async function fetchProject() {
     try {
       const res = await fetch(`/api/projects/${id}`);
@@ -901,9 +918,15 @@ export default function ProjectPage({
 
       {/* Create Scene Modal - Full Width */}
       {showCreate && (
-        <div className="fixed inset-0 bg-black/90 z-50 overflow-y-auto">
+        <div
+          className="fixed inset-0 bg-black/90 z-50 overflow-y-auto"
+          onClick={() => setShowCreate(false)}
+        >
           <div className="min-h-full p-6 md:p-8 lg:p-12">
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 md:p-8 w-full max-w-6xl mx-auto">
+            <div
+              className="bg-gray-900 border border-gray-800 rounded-xl p-6 md:p-8 w-full max-w-6xl mx-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-semibold text-gray-100">Create New Scene</h2>
                 <button
