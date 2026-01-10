@@ -170,7 +170,9 @@ export default function ProjectPage({
     generationMode: "digital-twin" as "standard" | "digital-twin",
   });
   const [creating, setCreating] = useState(false);
+  const [creatingAndGenerating, setCreatingAndGenerating] = useState(false);
   const [generating, setGenerating] = useState<string | null>(null);
+  const [generationAbortController, setGenerationAbortController] = useState<AbortController | null>(null);
   const [generatingSceneName, setGeneratingSceneName] = useState<string | null>(null);
   const [progress, setProgress] = useState<GenerationProgress | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -309,6 +311,56 @@ export default function ProjectPage({
     } finally {
       setCreating(false);
     }
+  }
+
+  async function createAndGenerateScene() {
+    if (!sceneForm.name.trim()) return;
+
+    setCreatingAndGenerating(true);
+    try {
+      const res = await fetch("/api/scenes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: id,
+          ...sceneForm,
+        }),
+      });
+
+      if (res.ok) {
+        const newScene = await res.json();
+        setSceneForm({
+          name: "",
+          dialogue: "",
+          environment: "",
+          wardrobe: "",
+          movement: "",
+          camera: "",
+          targetDuration: 15,
+          headshotId: "",
+          generationMode: "digital-twin",
+        });
+        setShowCreate(false);
+        await fetchProject();
+        // Immediately start generation
+        generateScene(newScene.id);
+      }
+    } catch (error) {
+      console.error("Error creating scene:", error);
+    } finally {
+      setCreatingAndGenerating(false);
+    }
+  }
+
+  function cancelGeneration() {
+    if (generationAbortController) {
+      generationAbortController.abort();
+    }
+    setGenerating(null);
+    setGeneratingSceneName(null);
+    setProgress(null);
+    setErrorMessage("Generation cancelled");
+    fetchProject();
   }
 
   async function generateScene(sceneId: string) {
@@ -558,9 +610,18 @@ export default function ProjectPage({
                   Generating: {generatingSceneName}
                 </span>
               </div>
-              <span className="text-sm text-blue-300">
-                Step {progress?.step || 1} of 5
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-blue-300">
+                  Step {progress?.step || 1} of 5
+                </span>
+                <button
+                  onClick={cancelGeneration}
+                  className="px-3 py-1.5 bg-red-600/20 hover:bg-red-600/40 text-red-300 border border-red-500/30 rounded-lg text-sm transition-colors flex items-center gap-1.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Cancel
+                </button>
+              </div>
             </div>
 
             {/* Progress Steps */}
@@ -838,11 +899,20 @@ export default function ProjectPage({
         </div>
       )}
 
-      {/* Create Scene Modal */}
+      {/* Create Scene Modal - Full Width */}
       {showCreate && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <h2 className="text-lg font-semibold text-gray-100 mb-4">Create New Scene</h2>
+        <div className="fixed inset-0 bg-black/90 z-50 overflow-y-auto">
+          <div className="min-h-full p-6 md:p-8 lg:p-12">
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 md:p-8 w-full max-w-6xl mx-auto">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-gray-100">Create New Scene</h2>
+                <button
+                  onClick={() => setShowCreate(false)}
+                  className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-400" />
+                </button>
+              </div>
 
             <div className="space-y-4">
               {/* Deven's Identity Card */}
@@ -955,7 +1025,7 @@ export default function ProjectPage({
               )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
                   Scene Name *
                 </label>
                 <input
@@ -965,12 +1035,12 @@ export default function ProjectPage({
                     setSceneForm({ ...sceneForm, name: e.target.value })
                   }
                   placeholder="e.g., Opening Scene"
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
                   Dialogue / Script
                 </label>
                 <textarea
@@ -978,14 +1048,14 @@ export default function ProjectPage({
                   onChange={(e) =>
                     setSceneForm({ ...sceneForm, dialogue: e.target.value })
                   }
-                  placeholder="The text that will be spoken..."
-                  rows={4}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  placeholder="Enter the complete script or dialogue that will be spoken by your avatar. This is typically the main content of your scene - take your time to craft the message..."
+                  rows={10}
+                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y text-base leading-relaxed"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
                   Environment
                 </label>
                 <textarea
@@ -994,14 +1064,14 @@ export default function ProjectPage({
                     setSceneForm({ ...sceneForm, environment: e.target.value })
                   }
                   placeholder="Describe the setting, background, lighting..."
-                  rows={2}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  rows={3}
+                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
                     Wardrobe
                   </label>
                   <input
@@ -1011,12 +1081,12 @@ export default function ProjectPage({
                       setSceneForm({ ...sceneForm, wardrobe: e.target.value })
                     }
                     placeholder="e.g., Dark navy suit"
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
                     Movement / Pose
                   </label>
                   <input
@@ -1026,14 +1096,14 @@ export default function ProjectPage({
                       setSceneForm({ ...sceneForm, movement: e.target.value })
                     }
                     placeholder="e.g., Subtle head movements"
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
                     Camera
                   </label>
                   <input
@@ -1043,12 +1113,12 @@ export default function ProjectPage({
                       setSceneForm({ ...sceneForm, camera: e.target.value })
                     }
                     placeholder="e.g., Medium close-up shot"
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
                     Target Duration
                   </label>
                   <select
@@ -1059,7 +1129,7 @@ export default function ProjectPage({
                         targetDuration: parseInt(e.target.value),
                       })
                     }
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value={5}>5 seconds</option>
                     <option value={10}>10 seconds</option>
@@ -1071,22 +1141,40 @@ export default function ProjectPage({
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 mt-6">
+            <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-gray-800">
               <button
                 onClick={() => setShowCreate(false)}
-                className="px-4 py-2 text-gray-400 hover:text-gray-200 transition-colors"
+                className="px-4 py-2.5 text-gray-400 hover:text-gray-200 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={createScene}
-                disabled={creating || !sceneForm.name.trim()}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:opacity-50"
+                disabled={creating || creatingAndGenerating || !sceneForm.name.trim()}
+                className="px-5 py-2.5 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors disabled:opacity-50"
               >
-                {creating ? "Creating..." : "Create Scene"}
+                {creating ? "Creating..." : "Create Scene Only"}
+              </button>
+              <button
+                onClick={createAndGenerateScene}
+                disabled={creating || creatingAndGenerating || !sceneForm.name.trim()}
+                className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-500 hover:to-purple-500 transition-all disabled:opacity-50 flex items-center gap-2 font-medium"
+              >
+                {creatingAndGenerating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Creating & Starting...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-4 h-4" />
+                    Create & Generate
+                  </>
+                )}
               </button>
             </div>
           </div>
+        </div>
         </div>
       )}
 
