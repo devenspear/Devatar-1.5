@@ -105,13 +105,51 @@ run('git push');
 console.log('\n☁️  Step 6: Deploying to Vercel...');
 run('vercel --prod --yes');
 
-// Summary
-console.log('\n╔═══════════════════════════════════════════════════════════╗');
-console.log('║                    DEPLOYMENT COMPLETE                     ║');
-console.log('╚═══════════════════════════════════════════════════════════╝');
-console.log(`\n✅ Version ${newVersion} deployed successfully!`);
-console.log('\n📍 Version should now appear in:');
-console.log('   • package.json (local)');
-console.log('   • GitHub repository');
-console.log('   • Vercel deployment');
-console.log('   • UI footer');
+// Step 7: Post-deployment health check
+console.log('\n🏥 Step 7: Running post-deployment health check...');
+const PROD_URL = 'https://devatar-1-5.vercel.app';
+
+// Wait a few seconds for deployment to propagate
+console.log('   Waiting 5 seconds for deployment to propagate...');
+const { setTimeout } = require('timers/promises');
+(async () => {
+  await new Promise(resolve => setTimeout(resolve, 5000));
+
+  try {
+    const healthResponse = await fetch(`${PROD_URL}/api/health`);
+    const healthData = await healthResponse.json();
+
+    if (healthResponse.ok && healthData.status === 'ok') {
+      console.log(`   ✅ Health check passed!`);
+      console.log(`   • Version: ${healthData.version}`);
+      console.log(`   • Database: ${healthData.database}`);
+      console.log(`   • Environment: ${healthData.environment}`);
+
+      // Verify version matches
+      if (healthData.version !== newVersion) {
+        console.log(`\n   ⚠️  WARNING: Deployed version (${healthData.version}) doesn't match expected (${newVersion})`);
+        console.log('   This may indicate a caching issue. Try hard-refreshing or wait a few minutes.');
+      }
+    } else {
+      console.log(`   ⚠️  Health check returned non-OK status`);
+      console.log(`   Response: ${JSON.stringify(healthData)}`);
+    }
+  } catch (error) {
+    console.log(`   ⚠️  Health check failed: ${error.message}`);
+    console.log('   The deployment may still be processing. Check manually at:');
+    console.log(`   ${PROD_URL}/api/health`);
+  }
+
+  // Summary
+  console.log('\n╔═══════════════════════════════════════════════════════════╗');
+  console.log('║                    DEPLOYMENT COMPLETE                     ║');
+  console.log('╚═══════════════════════════════════════════════════════════╝');
+  console.log(`\n✅ Version ${newVersion} deployed successfully!`);
+  console.log('\n📍 Version should now appear in:');
+  console.log('   • package.json (local)');
+  console.log('   • GitHub repository');
+  console.log('   • Vercel deployment');
+  console.log('   • UI footer');
+  console.log(`\n🔗 Verify at: ${PROD_URL}`);
+  console.log(`\n🏥 Health check: ${PROD_URL}/api/health`);
+})();

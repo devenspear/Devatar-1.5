@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -15,6 +16,7 @@ import {
   MousePointer2,
   User,
   Fingerprint,
+  LogOut,
 } from "lucide-react";
 import { useSidebar, SidebarMode } from "@/contexts/sidebar-context";
 import {
@@ -50,6 +52,53 @@ function DevatarLogo() {
       {/* Animated pulse */}
       <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-transparent to-white/20 animate-pulse" />
     </div>
+  );
+}
+
+// Logout button component
+function LogoutButton({ isCollapsed }: { isCollapsed: boolean }) {
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleLogout = async () => {
+    setIsLoading(true);
+    try {
+      await fetch("/api/admin/auth", { method: "DELETE" });
+      router.push("/login");
+      router.refresh();
+    } catch (error) {
+      console.error("Logout error:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (isCollapsed) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={handleLogout}
+            disabled={isLoading}
+            className="p-2 rounded-lg hover:bg-red-500/20 transition-colors text-gray-400 hover:text-red-400 disabled:opacity-50"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right">Logout</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <button
+      onClick={handleLogout}
+      disabled={isLoading}
+      className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-400 hover:bg-red-500/20 hover:text-red-400 transition-colors disabled:opacity-50"
+    >
+      <LogOut className="h-4 w-4" />
+      <span>{isLoading ? "Logging out..." : "Logout"}</span>
+    </button>
   );
 }
 
@@ -216,13 +265,16 @@ export function Sidebar() {
         </TooltipProvider>
       </nav>
 
-      {/* Mode toggle at bottom */}
+      {/* Footer with logout and mode toggle */}
       <div
         className={cn(
           "border-t border-gray-800",
-          isCollapsed ? "p-2 flex justify-center" : "p-3"
+          isCollapsed ? "p-2 flex flex-col items-center gap-2" : "p-3 space-y-2"
         )}
       >
+        <TooltipProvider delayDuration={0}>
+          <LogoutButton isCollapsed={isCollapsed} />
+        </TooltipProvider>
         <ModeToggle />
       </div>
     </motion.div>
