@@ -11,6 +11,7 @@ import {
   Settings,
   Activity,
   Video,
+  Film,
   PanelLeftClose,
   PanelLeft,
   MousePointer2,
@@ -35,6 +36,7 @@ interface NavItem {
 const navigation: NavItem[] = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Projects", href: "/projects", icon: FolderOpen },
+  { name: "Scenes", href: "/scenes", icon: Film },
   { name: "Assets", href: "/assets", icon: User },
   { name: "Identities", href: "/identities", icon: Fingerprint },
   { name: "Logs", href: "/logs", icon: Activity },

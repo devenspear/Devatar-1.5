@@ -13,6 +13,7 @@ export async function GET(
       where: { id },
       include: {
         project: true,
+        headshot: true,
         logs: {
           orderBy: { createdAt: "desc" },
           take: 20,
