@@ -18,7 +18,10 @@ Devatar is a Next.js-based platform for generating professional AI avatar videos
 - **Voice Synthesis**: ElevenLabs integration for natural text-to-speech with custom voice clones
 - **Video Generation**: Kling AI-powered video creation from images
 - **Lip-sync**: Sync Labs integration for realistic speech synchronization
-- **Asset Management**: Upload and manage headshots, backgrounds, and audio files
+- **Asset Management**: Upload and manage reference photos, scene images, backgrounds, and audio files
+  - Drag-and-drop file upload
+  - Folder organization system
+  - Scene Image import for hybrid workflows (external tools + animation)
 - **Cloud Storage**: Cloudflare R2 for scalable media storage
 
 ### Digital Twin (v1.5)
@@ -142,8 +145,9 @@ src/
    └── Text → Speech with custom voice clone
 
 2. Image Generation (Mode-dependent)
-   ├── Standard Mode: Use uploaded headshot
-   └── Digital Twin: Fal.ai + LoRA → Identity-locked image
+   ├── Standard Mode: Use uploaded headshot/reference photo
+   ├── Digital Twin: Fal.ai + LoRA → Identity-locked image
+   └── Scene Image Import: Use externally created scene (Nano Banana, etc.)
 
 3. Video Generation (Kling AI)
    └── Image + prompt → Animated video
@@ -154,6 +158,17 @@ src/
 5. Upload (R2)
    └── Final video stored and ready for playback
 ```
+
+## Asset Types
+
+| Type | Description | Use Case |
+|------|-------------|----------|
+| Reference Photos | High-quality photos of the subject | Standard mode video generation |
+| Scene Images | Complete scene compositions with avatar | Hybrid workflow (external creation + animation) |
+| Backgrounds | Environment/backdrop images | Scene backgrounds without avatar |
+| Training Videos | 4K green screen footage | Advanced avatar training |
+| Voice Samples | Audio recordings | Voice clone improvement |
+| Sound Effects | Audio effects | Scene enhancement |
 
 ## Documentation
 

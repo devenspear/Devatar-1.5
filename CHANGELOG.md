@@ -2,6 +2,92 @@
 
 All notable changes to Devatar are documented in this file.
 
+## [1.5.11] - 2026-01-10
+
+### Added
+
+#### Asset Management Enhancements
+- **Drag-and-Drop Upload** (`src/app/assets/page.tsx`)
+  - Drop files directly onto upload area with visual overlay feedback
+  - Automatic file type validation based on selected asset type
+  - Multi-file upload support
+
+- **Folder Organization System**
+  - Folder tabs for organizing images (All, Conference Scenes, Studio Shots, Outdoor Scenes, Product Demos, Custom)
+  - Create custom folders on-the-fly
+  - Filter assets by folder category
+  - `folder` field added to Asset model in Prisma schema
+
+- **Scene Image Asset Type**
+  - New `SCENE_IMAGE` type for externally created scene images
+  - Designed for hybrid workflow: create scenes in Nano Banana/Midjourney, import for animation
+  - Supports complete scene compositions with avatar included
+
+### Changed
+- Updated Asset API to accept `folder` parameter
+- Renamed "Headshots" to "Reference Photos" in Assets UI for clarity
+
+---
+
+## [1.5.10] - 2026-01-10
+
+### Fixed
+
+#### LoRA URL Newline Bug
+- Fixed 422 Unprocessable Entity error when testing LoRA
+- Root cause: newline character (`\n`) appended to DEVEN_LORA_URL env var (from `echo` vs `printf`)
+- Added `.trim()` safeguard to all LoRA URL usages:
+  - `src/config/identity.ts`
+  - `src/app/api/identities/[id]/test/route.ts`
+- Force redeployed to pick up corrected environment variable
+
+---
+
+## [1.5.9] - 2026-01-10
+
+### Fixed
+- Improved error logging for Fal.ai generation failures
+- Better extraction of error body, status, and details from API responses
+
+---
+
+## [1.5.8] - 2026-01-10
+
+### Fixed
+- Test LoRA button now visible when using system default LoRA (DEVEN_LORA_URL env var)
+- Button visibility check now includes `systemStatus?.configuration.defaultLoraConfigured`
+
+---
+
+## [1.5.7] - 2026-01-10
+
+### Fixed
+- Test LoRA button visibility issue on Identities page
+- Enhanced logging for LoRA test operations
+
+---
+
+## [1.5.6] - 2026-01-10
+
+### Fixed
+- Build error in scene creation modal (missing closing div tag)
+
+---
+
+## [1.5.5] - 2026-01-09
+
+### Added
+
+#### Scene Creation Modal Improvements
+- Expanded modal to full width (max-w-6xl)
+- Enlarged dialogue textarea from 4 rows to 10 rows
+- Added "Create & Generate" button for one-click scene creation and generation
+- Added cancel generation button in progress header
+- Added escape key handler to close modal
+- Added click-outside-to-close functionality
+
+---
+
 ## [1.5.0] - 2026-01-09
 
 ### Added
