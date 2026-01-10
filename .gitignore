@@ -40,6 +40,9 @@ next-env.d.ts
 # pnpm (local only)
 pnpm-lock.yaml
 
+# LoRA Training Data (large raw images)
+LORA_Training_Deven_*/
+
 # IDE
 .idea
 .vscode

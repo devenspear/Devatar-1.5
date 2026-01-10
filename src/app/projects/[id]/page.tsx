@@ -167,6 +167,7 @@ export default function ProjectPage({
     camera: "",
     targetDuration: 15,
     headshotId: "",
+    generationMode: "digital-twin" as "standard" | "digital-twin",
   });
   const [creating, setCreating] = useState(false);
   const [generating, setGenerating] = useState<string | null>(null);
@@ -298,6 +299,7 @@ export default function ProjectPage({
           camera: "",
           targetDuration: 15,
           headshotId: "",
+          generationMode: "digital-twin",
         });
         setShowCreate(false);
         fetchProject();
@@ -856,58 +858,101 @@ export default function ProjectPage({
                 </div>
               </div>
 
-              {/* Headshot Selector */}
+              {/* Generation Mode Toggle */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Select Headshot *
+                  Image Generation Mode
                 </label>
-                {headshots.length === 0 ? (
-                  <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg text-center">
-                    <User className="w-8 h-8 mx-auto mb-2 text-gray-600" />
-                    <p className="text-sm text-gray-500">No headshots uploaded yet</p>
-                    <a
-                      href="/assets"
-                      className="text-sm text-blue-400 hover:text-blue-300 mt-2 inline-block"
-                    >
-                      Upload headshots in Assets
-                    </a>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-4 gap-3">
-                    {headshots.map((headshot) => (
-                      <button
-                        key={headshot.id}
-                        type="button"
-                        onClick={() =>
-                          setSceneForm({ ...sceneForm, headshotId: headshot.id })
-                        }
-                        className={`aspect-square rounded-lg overflow-hidden border-2 transition-all ${
-                          sceneForm.headshotId === headshot.id
-                            ? "border-blue-500 ring-2 ring-blue-500/50"
-                            : "border-gray-700 hover:border-gray-600"
-                        }`}
-                      >
-                        {headshot.signedUrl ? (
-                          <img
-                            src={headshot.signedUrl}
-                            alt={headshot.name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-gray-800 flex items-center justify-center">
-                            <User className="w-6 h-6 text-gray-600" />
-                          </div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {sceneForm.headshotId && (
-                  <p className="text-xs text-green-400 mt-2">
-                    Headshot selected - will skip AI image generation
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSceneForm({ ...sceneForm, generationMode: "digital-twin", headshotId: "" })}
+                    className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${
+                      sceneForm.generationMode === "digital-twin"
+                        ? "border-purple-500 bg-purple-500/20 text-purple-300"
+                        : "border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600"
+                    }`}
+                  >
+                    <Zap className="w-5 h-5 mx-auto mb-1" />
+                    <span className="text-sm font-medium">Digital Twin</span>
+                    <p className="text-xs mt-1 opacity-70">AI-generated with LoRA</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSceneForm({ ...sceneForm, generationMode: "standard" })}
+                    className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${
+                      sceneForm.generationMode === "standard"
+                        ? "border-blue-500 bg-blue-500/20 text-blue-300"
+                        : "border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600"
+                    }`}
+                  >
+                    <ImageIcon className="w-5 h-5 mx-auto mb-1" />
+                    <span className="text-sm font-medium">Use Headshot</span>
+                    <p className="text-xs mt-1 opacity-70">Select from uploads</p>
+                  </button>
+                </div>
+                {sceneForm.generationMode === "digital-twin" && (
+                  <p className="text-xs text-purple-400 mt-2 flex items-center gap-1">
+                    <Zap className="w-3 h-3" />
+                    Uses TOK_DEVEN LoRA model to generate identity-consistent images
                   </p>
                 )}
               </div>
+
+              {/* Headshot Selector - Only show in standard mode */}
+              {sceneForm.generationMode === "standard" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Select Headshot *
+                  </label>
+                  {headshots.length === 0 ? (
+                    <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg text-center">
+                      <User className="w-8 h-8 mx-auto mb-2 text-gray-600" />
+                      <p className="text-sm text-gray-500">No headshots uploaded yet</p>
+                      <a
+                        href="/assets"
+                        className="text-sm text-blue-400 hover:text-blue-300 mt-2 inline-block"
+                      >
+                        Upload headshots in Assets
+                      </a>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-4 gap-3">
+                      {headshots.map((headshot) => (
+                        <button
+                          key={headshot.id}
+                          type="button"
+                          onClick={() =>
+                            setSceneForm({ ...sceneForm, headshotId: headshot.id })
+                          }
+                          className={`aspect-square rounded-lg overflow-hidden border-2 transition-all ${
+                            sceneForm.headshotId === headshot.id
+                              ? "border-blue-500 ring-2 ring-blue-500/50"
+                              : "border-gray-700 hover:border-gray-600"
+                          }`}
+                        >
+                          {headshot.signedUrl ? (
+                            <img
+                              src={headshot.signedUrl}
+                              alt={headshot.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full bg-gray-800 flex items-center justify-center">
+                              <User className="w-6 h-6 text-gray-600" />
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {sceneForm.headshotId && (
+                    <p className="text-xs text-green-400 mt-2">
+                      Headshot selected
+                    </p>
+                  )}
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">
