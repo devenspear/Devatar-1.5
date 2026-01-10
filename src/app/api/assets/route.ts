@@ -36,6 +36,7 @@ export async function POST(request: Request) {
     const file = formData.get("file") as File;
     const name = formData.get("name") as string;
     const type = formData.get("type") as string;
+    const folder = formData.get("folder") as string | null;
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
     }
 
     // Validate asset type
-    const validTypes = ["TRAINING_VIDEO", "HEADSHOT", "VOICE_SAMPLE", "BACKGROUND", "SOUND_EFFECT"];
+    const validTypes = ["TRAINING_VIDEO", "HEADSHOT", "VOICE_SAMPLE", "BACKGROUND", "SOUND_EFFECT", "SCENE_IMAGE"];
     if (!validTypes.includes(type)) {
       return NextResponse.json(
         { error: `Invalid type. Must be one of: ${validTypes.join(", ")}` },
@@ -66,6 +67,7 @@ export async function POST(request: Request) {
     switch (type) {
       case "HEADSHOT":
       case "BACKGROUND":
+      case "SCENE_IMAGE":
         isValidMimeType = SUPPORTED_IMAGE_TYPES.includes(mimeType);
         maxSize = MAX_FILE_SIZES.headshot;
         break;
@@ -108,6 +110,7 @@ export async function POST(request: Request) {
         r2Key: "",
         mimeType,
         sizeBytes: fileSize,
+        folder: folder || null,
       },
     });
 

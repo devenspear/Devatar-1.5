@@ -18,6 +18,7 @@ enum AssetType {
   VOICE_SAMPLE
   BACKGROUND
   SOUND_EFFECT
+  SCENE_IMAGE     // Complete scene images (created in external tools like Nano Banana)
   LORA_MODEL      // Digital Twin: .safetensors file for identity persistence
 }
 
@@ -44,6 +45,7 @@ model Asset {
   height          Int?
 
   elevenLabsVoiceId String?    // For voice assets
+  folder          String?      // Organizational folder (e.g., "Conference Scenes")
 
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
@@ -52,6 +54,7 @@ model Asset {
 
   @@index([type])
   @@index([status])
+  @@index([folder])
 }
 
 // ============================================================================

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import {
   Upload,
   Image as ImageIcon,
@@ -12,12 +12,16 @@ import {
   AlertCircle,
   User,
   Sparkles,
+  FolderPlus,
+  Folder,
+  Film,
+  X,
 } from "lucide-react";
 
 interface Asset {
   id: string;
   name: string;
-  type: "TRAINING_VIDEO" | "HEADSHOT" | "VOICE_SAMPLE" | "BACKGROUND" | "SOUND_EFFECT";
+  type: "TRAINING_VIDEO" | "HEADSHOT" | "VOICE_SAMPLE" | "BACKGROUND" | "SOUND_EFFECT" | "SCENE_IMAGE";
   status: "UPLOADING" | "PROCESSING" | "READY" | "FAILED";
   r2Key: string;
   r2Url: string | null;
@@ -27,6 +31,7 @@ interface Asset {
   width: number | null;
   height: number | null;
   elevenLabsVoiceId: string | null;
+  folder: string | null;
   createdAt: string;
   signedUrl?: string;
 }
@@ -35,10 +40,16 @@ type AssetType = Asset["type"];
 
 const TYPE_CONFIG: Record<AssetType, { label: string; icon: typeof ImageIcon; accept: string; description: string }> = {
   HEADSHOT: {
-    label: "Headshots",
+    label: "Reference Photos",
     icon: User,
     accept: "image/jpeg,image/png,image/webp",
     description: "High-quality photos of Deven for video generation",
+  },
+  SCENE_IMAGE: {
+    label: "Scene Images",
+    icon: Film,
+    accept: "image/jpeg,image/png,image/webp",
+    description: "Complete scenes with avatar for animation (created in Nano Banana, etc.)",
   },
   TRAINING_VIDEO: {
     label: "Training Videos",
@@ -56,7 +67,7 @@ const TYPE_CONFIG: Record<AssetType, { label: string; icon: typeof ImageIcon; ac
     label: "Backgrounds",
     icon: ImageIcon,
     accept: "image/jpeg,image/png,image/webp",
-    description: "Custom backgrounds for scenes",
+    description: "Custom backgrounds for scenes (without avatar)",
   },
   SOUND_EFFECT: {
     label: "Sound Effects",
@@ -66,6 +77,16 @@ const TYPE_CONFIG: Record<AssetType, { label: string; icon: typeof ImageIcon; ac
   },
 };
 
+// Default folders for organizing images
+const DEFAULT_FOLDERS = [
+  "All",
+  "Conference Scenes",
+  "Studio Shots",
+  "Outdoor Scenes",
+  "Product Demos",
+  "Custom",
+];
+
 export default function AssetsPage() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,6 +95,21 @@ export default function AssetsPage() {
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [defaultHeadshotId, setDefaultHeadshotId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Drag and drop state
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
+
+  // Folder state
+  const [activeFolder, setActiveFolder] = useState<string>("All");
+  const [folders, setFolders] = useState<string[]>(DEFAULT_FOLDERS);
+  const [showNewFolderInput, setShowNewFolderInput] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+
+  // Filter assets by folder
+  const filteredAssets = activeFolder === "All"
+    ? assets
+    : assets.filter(asset => asset.folder === activeFolder);
 
   useEffect(() => {
     fetchAssets();
@@ -109,21 +145,26 @@ export default function AssetsPage() {
     }
   }
 
-  async function handleUpload(event: React.ChangeEvent<HTMLInputElement>) {
-    const files = event.target.files;
+  // Core upload function that handles both file input and drag-drop
+  async function uploadFiles(files: FileList | File[]) {
     if (!files || files.length === 0) return;
 
     setUploading(true);
     setUploadProgress("Preparing upload...");
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      setUploadProgress(`Uploading ${file.name} (${i + 1}/${files.length})...`);
+    const fileArray = Array.from(files);
+    for (let i = 0; i < fileArray.length; i++) {
+      const file = fileArray[i];
+      setUploadProgress(`Uploading ${file.name} (${i + 1}/${fileArray.length})...`);
 
       const formData = new FormData();
       formData.append("file", file);
       formData.append("name", file.name);
       formData.append("type", activeType);
+      // Add folder if not "All"
+      if (activeFolder !== "All") {
+        formData.append("folder", activeFolder);
+      }
 
       try {
         const res = await fetch("/api/assets", {
@@ -142,11 +183,75 @@ export default function AssetsPage() {
 
     setUploading(false);
     setUploadProgress(null);
+    setIsDragging(false);
     fetchAssets();
 
     // Reset file input
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = event.target.files;
+    if (files) {
+      await uploadFiles(files);
+    }
+  }
+
+  // Drag and drop handlers
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current++;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current--;
+    if (dragCounter.current === 0) {
+      setIsDragging(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    dragCounter.current = 0;
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      // Filter files based on active type's accepted formats
+      const acceptedTypes = TYPE_CONFIG[activeType].accept.split(",");
+      const validFiles = Array.from(files).filter(file =>
+        acceptedTypes.some(type => file.type === type || file.type.startsWith(type.replace("/*", "/")))
+      );
+
+      if (validFiles.length > 0) {
+        await uploadFiles(validFiles);
+      } else {
+        alert(`Please drop valid ${TYPE_CONFIG[activeType].label.toLowerCase()} files`);
+      }
+    }
+  }, [activeType]);
+
+  // Create new folder
+  function handleCreateFolder() {
+    if (newFolderName.trim() && !folders.includes(newFolderName.trim())) {
+      setFolders([...folders, newFolderName.trim()]);
+      setActiveFolder(newFolderName.trim());
+      setNewFolderName("");
+      setShowNewFolderInput(false);
     }
   }
 
@@ -255,8 +360,86 @@ export default function AssetsPage() {
         })}
       </div>
 
-      {/* Upload Area */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+      {/* Folder Tabs (for image types) */}
+      {(activeType === "HEADSHOT" || activeType === "SCENE_IMAGE" || activeType === "BACKGROUND") && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {folders.map((folder) => (
+            <button
+              key={folder}
+              onClick={() => setActiveFolder(folder)}
+              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                activeFolder === folder
+                  ? "bg-purple-600 text-white"
+                  : "bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200"
+              }`}
+            >
+              <Folder className="w-3.5 h-3.5 inline mr-1.5" />
+              {folder}
+            </button>
+          ))}
+
+          {/* New Folder Button */}
+          {showNewFolderInput ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleCreateFolder()}
+                placeholder="Folder name..."
+                className="px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-200 focus:outline-none focus:border-purple-500 w-36"
+                autoFocus
+              />
+              <button
+                onClick={handleCreateFolder}
+                className="p-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-500"
+              >
+                <CheckCircle className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => { setShowNewFolderInput(false); setNewFolderName(""); }}
+                className="p-1.5 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowNewFolderInput(true)}
+              className="px-3 py-1.5 rounded-lg text-sm bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200 border border-dashed border-gray-600"
+            >
+              <FolderPlus className="w-3.5 h-3.5 inline mr-1.5" />
+              New Folder
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Upload Area with Drag and Drop */}
+      <div
+        className={`bg-gray-900 border rounded-xl p-6 relative transition-colors ${
+          isDragging
+            ? "border-blue-500 bg-blue-500/10"
+            : "border-gray-800"
+        }`}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
+        {/* Drag Overlay */}
+        {isDragging && (
+          <div className="absolute inset-0 bg-blue-600/20 border-2 border-dashed border-blue-500 rounded-xl flex items-center justify-center z-10">
+            <div className="text-center">
+              <Upload className="w-12 h-12 mx-auto mb-3 text-blue-400" />
+              <p className="text-blue-400 font-medium text-lg">Drop files to upload</p>
+              <p className="text-blue-300/70 text-sm mt-1">
+                {activeFolder !== "All" ? `Will be added to "${activeFolder}"` : "Drop anywhere"}
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="font-semibold text-gray-100">{config.label}</h3>
@@ -300,17 +483,21 @@ export default function AssetsPage() {
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
           </div>
-        ) : assets.length === 0 ? (
+        ) : filteredAssets.length === 0 ? (
           <div className="text-center py-12 border-2 border-dashed border-gray-800 rounded-lg">
             <TypeIcon className="w-12 h-12 mx-auto mb-4 text-gray-700" />
-            <p className="text-gray-500 mb-2">No {config.label.toLowerCase()} uploaded yet</p>
+            <p className="text-gray-500 mb-2">
+              {activeFolder !== "All"
+                ? `No ${config.label.toLowerCase()} in "${activeFolder}"`
+                : `No ${config.label.toLowerCase()} uploaded yet`}
+            </p>
             <p className="text-gray-600 text-sm">
               Drag and drop files here or click Upload above
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-            {assets.map((asset) => (
+            {filteredAssets.map((asset) => (
               <AssetCard
                 key={asset.id}
                 asset={asset}
@@ -394,12 +581,12 @@ function AssetCard({
       }
     }
 
-    if (asset.type === "HEADSHOT" || asset.type === "BACKGROUND") {
+    if (asset.type === "HEADSHOT" || asset.type === "BACKGROUND" || asset.type === "SCENE_IMAGE") {
       fetchSignedUrl();
     }
   }, [asset.id, asset.type]);
 
-  const isImage = asset.type === "HEADSHOT" || asset.type === "BACKGROUND";
+  const isImage = asset.type === "HEADSHOT" || asset.type === "BACKGROUND" || asset.type === "SCENE_IMAGE";
   const isVideo = asset.type === "TRAINING_VIDEO";
 
   return (
