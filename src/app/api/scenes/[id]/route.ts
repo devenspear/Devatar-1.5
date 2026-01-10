@@ -25,7 +25,14 @@ export async function GET(
       return NextResponse.json({ error: "Scene not found" }, { status: 404 });
     }
 
-    return NextResponse.json(scene);
+    // Convert BigInt to string for JSON serialization
+    const serializedScene = JSON.parse(
+      JSON.stringify(scene, (_, value) =>
+        typeof value === "bigint" ? value.toString() : value
+      )
+    );
+
+    return NextResponse.json(serializedScene);
   } catch (error) {
     console.error("Error fetching scene:", error);
     return NextResponse.json(
