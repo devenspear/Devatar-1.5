@@ -144,13 +144,20 @@ export async function POST(request: Request, { params }: RouteParams) {
             { moodLighting: "soft studio" }
           );
 
+          console.log(`[API] Test generation params:`, {
+            prompt: testPrompt.substring(0, 150),
+            loraUrl: effectiveLoraUrl.substring(0, 80) + '...',
+            loraScale: identity.loraScale,
+            triggerWord: identity.triggerWord,
+          });
+
           const result = await generateWithLora({
             prompt: testPrompt,
             loras: [{
               path: effectiveLoraUrl,
               scale: identity.loraScale,
             }],
-            imageSize: "square",
+            imageSize: "square_hd", // Use square_hd for better compatibility
             numInferenceSteps: 20, // Faster for testing
             guidanceScale: 3.5,
           });
@@ -164,9 +171,12 @@ export async function POST(request: Request, { params }: RouteParams) {
           console.log(`[API] Test image generated in ${result.inferenceTime}ms`);
         }
       } catch (genError) {
+        console.error(`[API] Test generation error:`, genError);
+        const errorMessage = genError instanceof Error ? genError.message : "Image generation failed";
+        const errorDetails = genError instanceof Error && 'body' in genError ? JSON.stringify((genError as Record<string, unknown>).body) : undefined;
         results.testImage = {
           success: false,
-          error: genError instanceof Error ? genError.message : "Image generation failed",
+          error: errorDetails ? `${errorMessage} - ${errorDetails}` : errorMessage,
         };
         results.overallStatus = "partial";
       }

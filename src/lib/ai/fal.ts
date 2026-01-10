@@ -163,11 +163,33 @@ export async function generateWithLora(
     };
   } catch (error) {
     const inferenceTime = Date.now() - startTime;
+
+    // Extract detailed error info from Fal.ai error response
+    let errorMessage = error instanceof Error ? error.message : String(error);
+    let errorDetails: Record<string, unknown> = {};
+
+    if (error && typeof error === 'object') {
+      // Fal.ai errors often have body, status, or detail properties
+      if ('body' in error) errorDetails.body = (error as Record<string, unknown>).body;
+      if ('status' in error) errorDetails.status = (error as Record<string, unknown>).status;
+      if ('detail' in error) errorDetails.detail = (error as Record<string, unknown>).detail;
+      if ('message' in error) errorMessage = String((error as Record<string, unknown>).message);
+    }
+
     console.error("[Fal.ai] Generation failed:", {
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage,
+      details: errorDetails,
       inferenceTime: `${inferenceTime}ms`,
+      params: {
+        promptPreview: params.prompt.substring(0, 100),
+        loraCount: params.loras?.length || 0,
+        loraUrls: params.loras?.map(l => l.path.substring(0, 50) + '...'),
+      }
     });
-    throw error;
+
+    // Create a more informative error
+    const detailStr = Object.keys(errorDetails).length > 0 ? ` Details: ${JSON.stringify(errorDetails)}` : '';
+    throw new Error(`Fal.ai generation failed: ${errorMessage}${detailStr}`);
   }
 }
 
