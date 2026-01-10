@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   Info,
   ExternalLink,
+  Zap,
 } from "lucide-react";
 
 interface IdentityProfile {
@@ -507,11 +508,33 @@ export default function IdentitiesPage() {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {/* Generate Test Image Button */}
+                    {identity.loraUrl && (
+                      <button
+                        onClick={() => handleTest(identity.id, true)}
+                        disabled={testingId === identity.id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 border border-purple-500/30 rounded-lg transition-colors disabled:opacity-50"
+                        title="Generate a test image to see your LoRA in action"
+                      >
+                        {testingId === identity.id ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            Generating...
+                          </>
+                        ) : (
+                          <>
+                            <Zap className="w-3.5 h-3.5" />
+                            Test LoRA
+                          </>
+                        )}
+                      </button>
+                    )}
+
                     <button
                       onClick={() => handleTest(identity.id)}
                       disabled={testingId === identity.id}
                       className="p-2 text-gray-400 hover:text-green-400 hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50"
-                      title="Test Configuration"
+                      title="Validate Configuration"
                     >
                       {testingId === identity.id ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -598,15 +621,35 @@ export default function IdentitiesPage() {
                     <p className="text-sm text-gray-400">{testResult.message}</p>
 
                     {testResult.testImage?.success && testResult.testImage.imageUrl && (
-                      <div className="mt-3">
-                        <a
-                          href={testResult.testImage.imageUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300"
-                        >
-                          View Test Image <ExternalLink className="w-3 h-3" />
-                        </a>
+                      <div className="mt-4 p-3 bg-gray-800/50 rounded-lg">
+                        <div className="flex items-start gap-4">
+                          <a
+                            href={testResult.testImage.imageUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block"
+                          >
+                            <img
+                              src={testResult.testImage.imageUrl}
+                              alt="LoRA Test Image"
+                              className="w-32 h-32 object-cover rounded-lg border border-gray-700 hover:border-purple-500 transition-colors"
+                            />
+                          </a>
+                          <div className="flex-1">
+                            <h4 className="text-sm font-medium text-gray-200 mb-1">LoRA Test Image</h4>
+                            <p className="text-xs text-gray-500 mb-2">
+                              Generated in {testResult.testImage.inferenceTime}ms using trigger word {identity.triggerWord}
+                            </p>
+                            <a
+                              href={testResult.testImage.imageUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-sm text-purple-400 hover:text-purple-300"
+                            >
+                              Open Full Size <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
